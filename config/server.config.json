@@ -1,0 +1,14 @@
+{
+  "host": "0.0.0.0",
+  "port": 8080,
+  "dataDir": "./data",
+  "uploadDir": "./uploads",
+  "backupDir": "./backup",
+  "logDir": "./logs",
+  "frontendDir": "./frontend",
+  "sessionTtlHours": 12,
+  "timezone": "Asia/Seoul",
+  "bootstrapAdminEmployeeIds": ["admin"],
+  "maxJsonBodyBytes": 1048576,
+  "backupSchedule": { "enabled": true, "hour": 2, "minute": 0 }
+}

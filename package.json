@@ -1,0 +1,22 @@
+{
+  "name": "defect-management-service",
+  "version": "1.0.0",
+  "description": "금융권 폐쇄망용 경량 결함관리서비스 v1.0 (Node.js 내장 모듈만 사용, 외부 의존성 없음)",
+  "private": true,
+  "main": "backend/server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node backend/server.js",
+    "test": "node --test backend/tests/*.test.js",
+    "seed": "node scripts/seed.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
+    "check:offline": "node scripts/check-offline.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "license": "UNLICENSED"
+}
