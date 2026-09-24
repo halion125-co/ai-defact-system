@@ -15,7 +15,7 @@ services:
       - DMS_BOOTSTRAP_ADMIN=admin
       # Quality Admin 로그인(#/admin-login)에 필요한 관리자 비밀번호. 비워두면 관리자 로그인 자체가 거부된다.
       # 반드시 아래 기본값을 바꿔서 사용할 것.
-      - DMS_ADMIN_PASSWORD=change-me-before-deploy
+      - DMS_ADMIN_PASSWORD=fltmzmvnawlfxla
       - TZ=Asia/Seoul
     volumes:
       # NAS 재부팅/컨테이너 재생성 후에도 데이터가 유지되도록 호스트 경로에 영구 저장한다.
