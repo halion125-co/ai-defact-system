@@ -7,8 +7,8 @@ services:
     container_name: ai-defect-system
     restart: unless-stopped
     ports:
-      # 왼쪽 값(호스트 포트)만 NAS 사정에 맞게 바꾸면 된다. 예: "80:8080" 또는 "8080:8080"
-      - "8080:8080"
+      # 왼쪽 값(호스트 포트)만 NAS 사정에 맞게 바꾸면 된다. NAS의 8080이 이미 다른 서비스가 쓰고 있어 18030으로 매핑.
+      - "18030:8080"
     environment:
       - DMS_HOST=0.0.0.0
       - DMS_PORT=8080
