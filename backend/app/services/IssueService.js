@@ -33,9 +33,9 @@ class IssueService {
     return this.issueRepo.withLock(issueId, async () => {
       const issue = this.issueRepo.get(issueId);
       if (!issue) throw errors.storageWriteFailed(`Issue 파일이 손상되어 처리할 수 없습니다: ${issueId}`);
-      if (expectedRevision !== undefined && issue.revision !== expectedRevision) {
-        throw errors.revisionConflict(issue.revision);
-      }
+      // 권한/상태/입력 검증(fn)을 먼저 수행하고 revision을 비교한다.
+      // → 권한 없는 사용자는 409가 아닌 403/400을 받는다. fn은 복제본(issue)을 변경하므로 충돌 시 폐기하면 된다.
+      //   파일 쓰기 등 부수효과가 있는 fn은 ctx.assertRevision()으로 먼저 검사해야 한다.
       const now = nowIso();
       const actor = this.userService.snapshot(user);
       const events = [];
@@ -44,6 +44,10 @@ class IssueService {
         actor,
         user,
         events,
+        expectedRevision,
+        assertRevision() {
+          if (expectedRevision !== undefined && issue.revision !== expectedRevision) throw errors.revisionConflict(issue.revision);
+        },
         event(eventType, { before, after, comment, data } = {}) {
           const ev = { eventId: null, eventType, actor, timestamp: now };
           if (before !== undefined) ev.before = before;
@@ -55,6 +59,7 @@ class IssueService {
         },
       };
       const result = await fn(issue, ctx);
+      ctx.assertRevision();
       for (const ev of events) ev.eventId = `EVT-${padNumber(await this.sequenceRepo.next('EVT'), 6)}`;
       issue.history = issue.history || [];
       issue.history.push(...events);
@@ -135,9 +140,15 @@ class IssueService {
     const issue = this.getRaw(issueId);
     const operation = this.configService.getOperation();
     const permissions = P.permissionHints(user, issue, operation);
-    // 숨김 Comment는 Admin 외에는 본문 미노출(원본은 파일/Audit 보존)
+    // 숨김 Comment는 Admin 외에는 본문 미노출(원본은 파일/Audit 보존). history의 COMMENTED/COMMENT_HIDDEN 이벤트도 함께 마스킹
     if (!permissions.isAdmin) {
-      issue.comments = issue.comments.map((c) => (c.hidden ? { ...c, body: null, attachments: [] } : c));
+      const hiddenIds = new Set(issue.comments.filter((c) => c.hidden).map((c) => c.commentId));
+      issue.comments = issue.comments.map((c) => (c.hidden ? { ...c, body: null, attachments: [], hiddenReason: undefined } : c));
+      issue.history = (issue.history || []).map((ev) => {
+        if (ev.eventType === EVENT.COMMENTED && ev.data && hiddenIds.has(ev.data.commentId)) return { ...ev, comment: undefined, data: { ...ev.data, attachments: [] } };
+        if (ev.eventType === EVENT.COMMENT_HIDDEN && ev.data) return { ...ev, comment: undefined, data: { commentId: ev.data.commentId } };
+        return ev;
+      });
     }
     issue.attachments = (issue.attachments || []).filter((a) => !a.deleted || permissions.isAdmin);
     return { issue, permissions };

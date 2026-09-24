@@ -9,10 +9,12 @@
 | 입력검증 (API) | `backend/tests/validation.test.js` 8건 — 경계값/타입/enum/XSS/제어문자/revision/요청 크기/경로 | 8/8 통과 |
 | 기능검증 (API) | `backend/tests/api.test.js`, `storage.test.js`, `unit.test.js` 34건 — E2E 시나리오 A~F, 권한 매트릭스, 동시성, 파일 손상, Dashboard 계산 | 34/34 통과 |
 | 기능/UI/입력검증 (브라우저) | Edge headless + 4개 사용자 컨텍스트(Admin/Reporter/Assignee/타인) 실제 화면 조작 102개 검사 | 102/102 통과 |
+| UX/보안 (API) | `backend/tests/ux-security.test.js` 11건 — 여러 줄·탭·CRLF·이모지·붙여넣기 왕복, 검색/숨김 누출, 직접 접근·세션·변조 | 11/11 통과 |
+| UX/보안 (브라우저) | `browser-ux-security.js` 43개 검사 — 붙여넣기 등록/조회/수정, XSS 렌더, 권한 없는 직접 URL/콘솔 API 호출, 권한 변경 즉시 반영 | 43/43 통과 |
 | 폐쇄망 | 정적 검사 + 브라우저 요청 모니터링 | 외부 요청 0건, JS 오류 0건 |
 | 반응형 | 1440 / 1280px | 가로 스크롤 없음 |
 
-실행: `npm test` (42건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
+실행: `npm test` (53건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
 
 ## PMD 기능별 검증 결과
 
@@ -117,6 +119,35 @@
 | 본문 1MB 초과 413(응답 후 연결 종료), 잘못된 JSON 400, 경로 traversal 404, 미지원 Method 405 | ✅ |
 | 모든 Mutation 서버측 권한 재검증(403 케이스 9종) | ✅ |
 
+### 10. UX: 여러 줄 · 붙여넣기 입력의 저장/조회/수정 (사용자 요청 추가 검증)
+| 시나리오 | 결과 | 증적 |
+|---|---|---|
+| 현상 textarea에 빈 줄·탭·스택트레이스·긴 URL·HTML 태그가 섞인 텍스트 붙여넣기 → 등록 | ✅ 원문 보존(3줄 이상 연속 빈 줄만 2줄로 축약, 줄 끝 공백 제거) | screenshots-ux/01, 02 |
+| 상세 조회: 줄바꿈/빈 줄/탭 그대로 표시, HTML 태그는 텍스트로(요소 생성 없음, alert 미실행) | ✅ | 02-multiline-detail.png |
+| 긴 URL(300자)·이모지·유니코드 → 레이아웃 넘침 없음, 제목은 첫 줄 80자(이모지 경계 보호) | ✅ | 02 |
+| 한 줄 입력란(발생 위치/단계)에 여러 줄 붙여넣기 → 개행은 공백으로 | ✅ | 01 |
+| 재현절차 입력란에 "1. …
+2. …" 5줄 붙여넣기 → 5단계로 자동 분리 + 번호 제거 + 안내 토스트 | ✅ | 01-multiline-form.png |
+| 수정 모달: 저장된 원문 그대로 로드, 변경 없이 저장 시 "변경된 내용이 없습니다" | ✅ | 03-edit-modal.png |
+| 문단 추가 + "1.5초 대기" 단계 추가 → 번호로 오인되지 않고 저장, Before/After에 줄바꿈 보존 | ✅ | 04-edit-roundtrip.png |
+| Comment 여러 줄/빈 줄 렌더링, 목록 ellipsis·Kanban 2줄 clamp, 로그 내부 단어 검색 | ✅ | 05-kanban-clamp.png |
+| 2000자(현상)/5000자(Comment) 초과 붙여넣기 → 해당 필드에 한도 안내 | ✅ | ux-security.test |
+| 단독 CR(구형 편집기), CRLF → LF 정규화 | ✅ | ux-security.test |
+
+### 11. 보안: 권한 없는 사용자의 직접 접근 (사용자 요청 추가 검증)
+| 시나리오 | 결과 | 증적 |
+|---|---|---|
+| 세션 없이 상세 URL 직접 입력 → 로그인 화면 → 로그인 후 원래 요청한 페이지로 복귀 | ✅ | ux-security 브라우저 |
+| 세션 없이 API 8종 → 401, `/data` `/uploads` `/config` `/backend` `/logs` `/backup` `/.git` 등 서버 경로 → 404, 정적 traversal → 차단 | ✅ | ux-security.test |
+| 비관계자(등록자/조치자 아님): 조회만 가능, 수정/Comment 버튼 없음. 브라우저 콘솔에서 fetch로 직접 PATCH/Comment/Priority/배정 호출 → 403 (오래된 revision이어도 409가 아닌 403) | ✅ | ux-security 브라우저 |
+| 콘솔에서 관리자/설정/사용자 API 직접 호출 → 403, CSRF 헤더 없이 → 403, `/data/issues/*.json` → 404 | ✅ | |
+| 본문 변조: reporter/status/priority/assignee/id/revision/author/isQualityAdmin/`__proto__` 주입 → 모두 무시(Actor는 세션) | ✅ | ux-security.test |
+| 등록내용 수정으로 status/assignee/priority/history 변경 시도 → 400 (allowlist) | ✅ | |
+| 세션 쿠키 HttpOnly + SameSite=Strict, 재로그인 시 새 sid 발급(이전 sid 무효), 종료 후 재사용 불가, 위조 sid 401 | ✅ | ux-security.test |
+| Admin 승격/해제 → 대상 사용자가 화면 이동만 해도 설정 메뉴 즉시 노출/제거, 해제 후 /settings 직접 접근 → 권한 없음 | ✅ | 06-demoted-forbidden.png |
+| 비활성화 → 기존 세션 즉시 로그아웃(화면 이동 시 로그인 화면), 재로그인 차단 안내, 비활성 사용자 배정 불가 | ✅ | 07-inactive-login.png |
+| 숨김 Comment 원문: 타인 화면 DOM 전체·API 응답(history 포함)·검색·Comment 카운트 어디에도 없음. Admin만 원문+사유, 파일 원본 보존 | ✅ | 08-hidden-comment-other.png |
+
 ## 검증 중 발견·수정한 결함
 
 | # | 결함 | 수정 |
@@ -128,6 +159,13 @@
 | F-05 | Sequence 파일 저장 실패가 500 INTERNAL로 노출 | STORAGE_WRITE_FAILED 표준화 + fs 오류 코드 매핑 |
 | F-06 | Timeline에서 동일 초 이벤트 순서 불안정 | history 배열 순서를 tie-break로 사용 |
 | F-07 | 1280px에서 상태 Donut 과대 확대, 목록 환경 컬럼 세로 줄바꿈 | CSS 고정 크기/nowrap |
+| F-08 | **숨김 Comment 원문이 history의 COMMENTED/COMMENT_HIDDEN 이벤트로 비관리자에게 노출** | 비관리자 응답에서 해당 이벤트의 comment/originalBody 마스킹 |
+| F-09 | 예약 경로(`/uploads`, `/data` 등)에 SPA fallback으로 index.html 응답 | 예약 디렉터리명은 fallback 제외 → 404 |
+| F-10 | 권한 없는 사용자가 오래된 revision으로 호출 시 403 대신 409("다른 사용자가 먼저 수정") 수신 | 권한/검증 후 revision 비교(부수효과 있는 첨부는 파일 쓰기 전 명시 검사) |
+| F-11 | 단독 CR(``) 미정규화, 이모지 경계에서 제목 잘림 깨짐, 수정 모달에서 "1.5초 대기" 단계가 번호로 오인 | CR→LF, 코드포인트 단위 자르기, 번호 패턴에 공백 요구 |
+| F-12 | 관리자가 권한 해제/비활성화해도 대상 사용자 브라우저는 캐시된 사용자 정보로 설정 메뉴 유지 | 화면 이동 시 세션 사용자 재확인, 변경 시 Shell 재구성 |
+| F-13 | 세션 없이 상세 URL 접근 후 로그인하면 Dashboard로 이동 | 요청 경로 기억 후 복귀 |
+| F-14 | 재현절차 입력란에 여러 줄 붙여넣기 시 한 줄로 합쳐짐 | 줄마다 단계로 자동 분리 |
 
 ## 미검증 / 제약
 

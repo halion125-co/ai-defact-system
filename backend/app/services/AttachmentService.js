@@ -123,6 +123,7 @@ class AttachmentService {
     const added = [];
     const { issue } = await this.issueService.mutate(issueId, user, expectedRevision, async (iss, ctx) => {
       if (!P.canAttach(user, iss)) throw errors.forbidden('등록자, 조치자 또는 Quality Admin만 첨부를 추가할 수 있습니다.');
+      ctx.assertRevision(); // 파일 쓰기(부수효과) 전에 충돌 확인
       const dir = safeJoin(this.uploadDir, iss.id);
       ensureDir(dir);
       iss.attachments = iss.attachments || [];

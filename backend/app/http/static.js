@@ -50,8 +50,10 @@ function createStaticHandler(rootDir) {
       stat = null;
     }
     if (!stat) {
-      // SPA fallback: 확장자 없는 경로는 index.html
-      if (!path.extname(rel) && fs.existsSync(indexFile)) {
+      // SPA fallback: 확장자 없는 경로는 index.html (서버 예약 디렉터리명은 제외)
+      const first = rel.split('/').filter(Boolean)[0] || '';
+      const reserved = ['api', 'data', 'uploads', 'backup', 'logs', 'config', 'backend', 'scripts', 'node_modules', '.git'];
+      if (!path.extname(rel) && !reserved.includes(first) && fs.existsSync(indexFile)) {
         file = indexFile;
         stat = fs.statSync(file);
       } else {

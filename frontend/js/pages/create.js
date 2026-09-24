@@ -123,6 +123,12 @@ function renderDefectForm(main, navigate) {
   const addStep = (value = '') => {
     const input = h('input', { class: 'input', maxlength: 500 });
     input.value = value;
+    bindStep(input);
+    steps.push(input);
+    renderSteps();
+    return input;
+  };
+  function bindStep(input) {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -130,10 +136,28 @@ function renderDefectForm(main, navigate) {
         steps[Math.min(steps.indexOf(input) + 1, steps.length - 1)].focus();
       }
     });
-    steps.push(input);
-    renderSteps();
-    return input;
-  };
+    // 여러 줄 붙여넣기 → 줄마다 단계로 분리(앞의 "1." 번호 제거)
+    input.addEventListener('paste', (e) => {
+      const txt = (e.clipboardData || window.clipboardData).getData('text');
+      if (!txt || !/[\r\n]/.test(txt.trim())) return;
+      e.preventDefault();
+      const lines = txt.split(/\r?\n/).map((l) => l.replace(/^\s*\d{1,3}[.)]\s+/, '').trim()).filter(Boolean);
+      if (!lines.length) return;
+      const idx = steps.indexOf(input);
+      input.value = lines[0];
+      let at = idx;
+      for (const l of lines.slice(1)) {
+        const next = h('input', { class: 'input', maxlength: 500 });
+        next.value = l;
+        bindStep(next);
+        steps.splice(++at, 0, next);
+      }
+      // 뒤따르는 빈 단계 제거
+      for (let i = steps.length - 1; i > at; i--) if (!steps[i].value.trim()) steps.splice(i, 1);
+      renderSteps();
+      toast(`재현 절차를 ${lines.length}단계로 나누어 입력했습니다.`, 'info');
+    });
+  }
   addStep();
   addStep();
   addStep();

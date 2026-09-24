@@ -391,7 +391,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .detail-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(var(--header-h) + 16px); }
 .summary-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .summary-head .id { font-family: var(--mono); font-size: 18px; font-weight: 700; }
-.summary-title { font-size: 22px; font-weight: 600; margin: 0 0 14px; line-height: 1.35; word-break: break-word; }
+.summary-title { font-size: 22px; font-weight: 600; margin: 0 0 14px; line-height: 1.35; word-break: break-word; overflow-wrap: anywhere; }
 .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 16px; }
 .meta-grid .k { font-size: 12px; color: var(--text-2); margin-bottom: 2px; }
 .meta-grid .v { font-weight: 500; }
@@ -399,8 +399,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .content-block { margin-bottom: 18px; }
 .content-block:last-child { margin-bottom: 0; }
 .content-block h4 { margin: 0 0 6px; font-size: 13px; color: var(--text-2); font-weight: 600; }
-.content-block .body { white-space: pre-wrap; word-break: break-word; line-height: 1.6; }
+.content-block .body { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; line-height: 1.6; tab-size: 4; }
 .content-block ol { margin: 0; padding-left: 22px; line-height: 1.7; }
+.content-block ol li { word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
 .side-kv { display: flex; flex-direction: column; gap: 14px; }
 .side-kv .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .side-kv .k { font-size: 12px; color: var(--text-2); }
@@ -410,7 +411,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .action-bar .note { width: 100%; color: var(--text-2); font-size: 13px; }
 .trace { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; }
 .trace .k { font-size: 12px; color: var(--text-2); }
-.trace .v { font-weight: 500; word-break: break-all; }
+.trace .v { font-weight: 500; word-break: break-word; overflow-wrap: anywhere; }
 .trace .v.empty { color: var(--text-3); font-weight: 400; }
 
 /* Timeline */
@@ -431,9 +432,10 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tl-head .team { color: var(--text-2); }
 .tl-head .time { color: var(--text-3); margin-left: auto; font-size: 12px; }
 .tl-label { font-weight: 600; margin: 2px 0; }
-.tl-change { font-size: 13px; color: var(--text-2); }
+.tl-change { font-size: 13px; color: var(--text-2); word-break: break-word; overflow-wrap: anywhere; }
+.tl-label { word-break: break-word; }
 .tl-change .arrow { margin: 0 6px; color: var(--text-3); }
-.tl-comment { background: #F7F9FD; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; white-space: pre-wrap; word-break: break-word; margin-top: 4px; line-height: 1.6; }
+.tl-comment { background: #F7F9FD; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin-top: 4px; line-height: 1.6; tab-size: 4; }
 .tl-comment.hidden-c { color: var(--text-3); font-style: italic; }
 .tl-reason { background: var(--warning-soft); border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-top: 4px; white-space: pre-wrap; }
 .tl-diff { margin-top: 6px; font-size: 13px; }

@@ -324,7 +324,7 @@ export async function renderDetail(main, { params, navigate }) {
             let ov;
             if (f.name === 'environmentId') ov = issue.environment.id;
             else if (f.name === 'reproductionSteps') {
-              nv = nv.split('\n').map((s) => s.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean);
+              nv = nv.split('\n').map((s) => s.replace(/^\s*\d{1,3}[.)]\s+/, '').trim()).filter(Boolean);
               ov = (issue.reproductionSteps || []).map((s) => s.text);
               if (JSON.stringify(nv) === JSON.stringify(ov)) continue;
               changes.reproductionSteps = nv;

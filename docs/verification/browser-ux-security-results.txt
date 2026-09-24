@@ -1,0 +1,43 @@
+PASS 한 줄 입력란에 여러 줄 붙여넣기 → 개행 제거
+PASS textarea 붙여넣기 원문 보존(빈 줄/탭/태그 포함)
+PASS 재현절차 5줄 붙여넣기 → 5단계 자동 분리 + 번호 제거
+PASS 여러 줄 결함 등록 성공
+PASS 상세 현상: 줄바꿈·빈 줄 유지(innerText 줄 수)
+PASS 상세 현상: 3줄 이상 연속 빈 줄은 2줄로 축약
+PASS 상세 현상: HTML 태그가 텍스트로 표시(요소 생성 없음)
+PASS 상세 현상: 탭 문자 보존
+PASS 상세: 긴 URL이 레이아웃을 넘치지 않음
+PASS 제목 = 첫 줄 (80자 이내)
+PASS 재현절차 5단계 표시
+PASS 기대 결과 줄바꿈/목록 유지
+PASS XSS 다이얼로그 없음
+PASS 수정 모달: 저장된 현상 원문 그대로(정규화본과 일치)
+PASS 수정 모달: 재현절차 한 줄에 한 단계
+PASS 변경 없이 저장 → "변경된 내용이 없습니다"
+PASS 수정 후 문단 추가 반영 + 기존 줄바꿈 유지
+PASS 재현절차 6단계, "1.5초 대기" 번호로 오인되지 않음
+PASS Timeline UPDATED 변경내용 보기(현상·재현절차 2건)
+PASS Before/After에 줄바꿈 보존
+PASS Comment 여러 줄/빈 줄 렌더링(과도한 빈 줄 축약)
+PASS 목록: 긴 제목 ellipsis + 페이지 가로 스크롤 없음
+PASS Kanban: 카드 제목 2줄 clamp(overflow hidden) + 가로 스크롤 없음
+PASS 검색: 붙여넣은 로그 내부 단어로 검색됨
+PASS 세션 없이 상세 URL → 로그인 화면으로
+PASS 로그인 후 원래 요청한 상세 페이지로 복귀
+PASS 비관계자: Action = [내가 조치]만, 수정 버튼 없음
+PASS 비관계자: Comment 입력란 없음
+PASS 비관계자 콘솔 직접 호출(오래된 revision이어도): 수정/Comment/Priority/배정 403
+PASS 비관계자 콘솔 직접 호출: 관리자/설정/사용자 API 403
+PASS CSRF 헤더 없는 호출 403, 데이터 파일 직접 접근 404
+PASS Admin이 10002 승격
+PASS 승격 후 재로그인 없이 설정 메뉴 노출
+PASS 승격된 사용자 설정 화면 진입
+PASS Admin이 10002 해제
+PASS 해제 후 설정 메뉴 즉시 사라짐
+PASS 해제 후 /settings 직접 접근 → 권한 없음
+PASS Admin이 10002 비활성화
+PASS 비활성화된 사용자는 화면 이동 시 로그인 화면으로
+PASS 비활성 사용자 재로그인 차단 안내
+PASS Admin Comment 숨김
+PASS 타인 화면: 숨김 Comment 원문/사유 미노출(DOM 전체)
+PASS 타인 API 응답(history 포함)에 숨김 원문 없음

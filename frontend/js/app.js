@@ -3,7 +3,7 @@
  */
 import { api, onUnauthorized } from './api.js';
 import { store } from './store.js';
-import { route, setNotFound, setBeforeEach, startRouter, navigate, parseHash } from './router.js';
+import { route, setNotFound, setBeforeEach, startRouter, navigate, parseHash, buildHash } from './router.js';
 import { h, clear, toast, typeBadge, statusBadge, initials, debounce, emptyState } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
@@ -164,7 +164,7 @@ function mount(renderFn) {
 route('/start', async (ctx) => {
   shellEl = null;
   clear(app);
-  await renderLogin(app, { ...ctx, navigate, onLogin: () => navigate('/dashboard', {}, { replace: true }) });
+  await renderLogin(app, { ...ctx, navigate, onLogin: afterLogin });
 });
 route('/', async () => navigate('/dashboard', {}, { replace: true }));
 route('/dashboard', mount(renderDashboard));
@@ -178,11 +178,43 @@ route('/new/:type', mount(renderCreate));
 route('/settings', mount(renderSettings));
 setNotFound(mount(async (main) => main.append(emptyState('페이지를 찾을 수 없습니다.', null, h('a', { class: 'btn btn-primary', href: '#/dashboard' }, 'Dashboard로 이동')))));
 
-setBeforeEach(async ({ path }) => {
+const PENDING_KEY = 'dms.pendingRoute';
+setBeforeEach(async ({ path, query }) => {
   if (path === '/start') return null;
-  if (!store.user) return { path: '/start' };
+  // 화면 이동 시 세션 사용자 재확인: 비활성화/권한 변경이 재로그인 없이 즉시 반영된다.
+  if (store.user) {
+    try {
+      const { user } = await api.session.current();
+      if (!user) store.user = null;
+      else if (JSON.stringify(user) !== JSON.stringify(store.user)) {
+        store.user = user;
+        shellEl = null; // 권한 변경 시 Shell(설정 메뉴 등) 재구성
+      }
+    } catch {
+      /* 네트워크 오류 시 캐시 유지 */
+    }
+  }
+  if (!store.user) {
+    try {
+      sessionStorage.setItem(PENDING_KEY, buildHash(path, query));
+    } catch {
+      /* ignore */
+    }
+    return { path: '/start' };
+  }
   return null;
 });
+function afterLogin() {
+  let pending = null;
+  try {
+    pending = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+  if (pending && pending.startsWith('#/') && !pending.startsWith('#/start')) location.hash = pending;
+  else navigate('/dashboard', {}, { replace: true });
+}
 
 onUnauthorized(() => {
   if (store.user) {
