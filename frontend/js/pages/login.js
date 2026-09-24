@@ -43,11 +43,11 @@ export async function renderLogin(root, { onLogin }) {
 
   function viewStart() {
     clear(card);
-    card.append(h('h2', {}, '사용자 시작'), h('p', { class: 'hint' }, '폐쇄망 내부 사용자 식별용입니다. 비밀번호를 사용하지 않습니다.'));
+    card.append(h('h2', {}, '로그인'), h('p', { class: 'hint' }, `${(store.project && store.project.projectName) || 'KT AI Agent'}에 오신 것을 환영합니다.`));
     if (lastUser) {
-      const btn = h('button', { class: 'btn btn-primary btn-block btn-lg', onClick: (e) => start(lastUser.employeeId, e.currentTarget) }, '이 사용자로 시작');
+      const btn = h('button', { class: 'btn btn-primary btn-block', onClick: (e) => start(lastUser.employeeId, e.currentTarget) }, '이 사용자로 시작');
       card.append(
-        h('div', { class: 'user-pick' }, h('div', { class: 'avatar' }, initials(lastUser.name)), h('div', {}, h('div', { style: { fontWeight: 600 } }, lastUser.name), h('div', { class: 'small', style: { color: '#B8CBE6' } }, lastUser.team, lastUser.isQualityAdmin ? ' · Quality Admin' : ''))),
+        h('div', { class: 'user-pick' }, h('div', { class: 'avatar' }, initials(lastUser.name)), h('div', {}, h('div', { style: { fontWeight: 600 } }, lastUser.name), h('div', { class: 'small', style: { color: '#A9BEDD' } }, lastUser.team, lastUser.isQualityAdmin ? ' · Quality Admin' : ''))),
         btn,
         h('button', { class: 'btn btn-secondary btn-block mt-8', onClick: viewChange }, '사용자 변경')
       );
@@ -55,26 +55,30 @@ export async function renderLogin(root, { onLogin }) {
       viewChange(true);
       return;
     }
-    card.append(errEl, h('div', { class: 'divider' }), h('div', { class: 'small', style: { color: '#B8CBE6', marginBottom: '8px' } }, '처음 사용하시나요?'), h('button', { class: 'btn btn-secondary btn-block', onClick: viewRegister }, '신규 사용자 등록'));
+    card.append(errEl, h('div', { class: 'divider' }, '또는'), h('div', { class: 'small', style: { color: '#A9BEDD', marginBottom: '8px' } }, '처음 사용하시나요?'), h('button', { class: 'btn btn-secondary btn-block', onClick: viewRegister }, '신규 사용자 등록'));
   }
 
   function viewChange(initial = false) {
     clear(card);
     // 본인 사번을 직접 입력해야만 진입할 수 있다. 등록된 타 사용자 이름을 목록으로 노출하지 않는다
-    // (공용 PC에서 사번을 모르는 채로 다른 사람 이름을 클릭해 접근하는 것을 방지).
-    card.append(h('h2', {}, '사용자 선택'), h('p', { class: 'hint' }, '본인 사번을 입력해주세요.'));
-    const input = h('input', { class: 'input', placeholder: '사번 입력', autocomplete: 'off' });
-    const btn = h('button', { class: 'btn btn-primary btn-block btn-lg mt-8', onClick: (e) => (input.value.trim() ? start(input.value.trim(), e.currentTarget) : showErr('사번을 입력해주세요.')) }, '시작');
+    // (공용 PC에서 사번을 모르는 채로 다른 사람 이름을 클릭해 접근하는 것을 방지). 비밀번호는 사용하지 않는다.
+    card.append(h('h2', {}, '로그인'), h('p', { class: 'hint' }, '본인 사번을 입력해주세요. 비밀번호는 사용하지 않습니다.'));
+    const input = h('input', { class: 'input', placeholder: '사번을 입력하세요', autocomplete: 'off' });
+    const btn = h('button', { class: 'btn btn-primary btn-block mt-8', onClick: (e) => (input.value.trim() ? start(input.value.trim(), e.currentTarget) : showErr('사번을 입력해주세요.')) }, '로그인');
     input.addEventListener('keydown', (e) => e.key === 'Enter' && btn.click());
-    card.append(h('div', { class: 'field' }, h('label', {}, '사번'), input), btn, errEl);
-    if (!initial && lastUser) card.append(h('button', { class: 'btn btn-ghost btn-block mt-8', style: { color: '#B8CBE6' }, onClick: viewStart }, '← 돌아가기'));
-    card.append(h('div', { class: 'divider' }), h('div', { class: 'small', style: { color: '#B8CBE6', marginBottom: '8px' } }, '처음 사용하시나요?'), h('button', { class: 'btn btn-secondary btn-block', onClick: viewRegister }, '신규 사용자 등록'));
+    card.append(
+      h('div', { class: 'field' }, h('label', {}, '사번'), h('div', { class: 'input-icon' }, h('span', { class: 'ico' }, '👤'), input)),
+      btn,
+      errEl
+    );
+    if (!initial && lastUser) card.append(h('button', { class: 'btn btn-ghost btn-block mt-8', style: { color: '#A9BEDD' }, onClick: viewStart }, '← 돌아가기'));
+    card.append(h('div', { class: 'divider' }, '또는'), h('div', { class: 'small', style: { color: '#A9BEDD', marginBottom: '8px' } }, '처음 사용하시나요?'), h('button', { class: 'btn btn-secondary btn-block', onClick: viewRegister }, '신규 사용자 등록'));
     setTimeout(() => input.focus(), 0);
   }
 
   function viewRegister() {
     clear(card);
-    card.append(h('h2', {}, '최초 사용자 등록'), h('p', { class: 'hint' }, '사번·이름·소속만 입력하면 바로 시작합니다.'));
+    card.append(h('h2', {}, '최초 사용자 등록'), h('p', { class: 'hint' }, '사번·이름·소속만 입력하면 바로 시작합니다. 비밀번호는 사용하지 않습니다.'));
     const f = {
       employeeId: h('input', { class: 'input', placeholder: '예) 12345678', autocomplete: 'off' }),
       name: h('input', { class: 'input', placeholder: '예) 김성훈' }),
@@ -128,13 +132,26 @@ export async function renderLogin(root, { onLogin }) {
   const brand = h(
     'div',
     { class: 'login-brand' },
-    h('h1', {}, h('span', { class: 'ring' }), 'KT AI Agent'),
+    h('div', { class: 'bar' }),
+    h('h1', {}, 'KT ', h('span', { class: 'accent' }, 'AI Agent')),
     h('div', { class: 'sub' }, '프로젝트 품질 · 결함관리 서비스'),
+    h('div', { class: 'rule' }),
     h('div', { class: 'msg' }, '함께 만드는 더 나은 품질,', h('br'), '빠르게 등록하고 끝까지 추적합니다'),
-    h('div', { class: 'mt-24 small', style: { color: '#9DB4D3' } }, `${p.customerName || ''} ${p.customerName ? '|' : ''} ${p.projectName || ''}`)
+    p.customerName || p.projectName ? h('div', { class: 'mt-24 small', style: { color: '#9DB4D3' } }, `${p.customerName || ''} ${p.customerName ? '|' : ''} ${p.projectName || ''}`) : null
   );
+  const year = new Date().getFullYear();
   clear(root).append(
-    h('div', { class: 'login' }, h('div', { class: 'login-wrap' }, brand, card), h('div', { class: 'login-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')))
+    h(
+      'div',
+      { class: 'login' },
+      h('div', { class: 'login-wrap' }, brand, card),
+      h(
+        'div',
+        { class: 'login-foot' },
+        h('div', { class: 'brand-mark' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', { class: 'sep' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')),
+        h('span', {}, `© ${year} KT. All rights reserved.`)
+      )
+    )
   );
   viewStart();
 }
