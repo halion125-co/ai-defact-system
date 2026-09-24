@@ -66,8 +66,8 @@ export function svg(tag, attrs = {}, ...children) {
 }
 
 /* ---------- Labels ---------- */
-export const STATUS_LABEL = { OPEN: 'Open', IN_PROGRESS: 'In Progress', DONE: 'Done', CLOSED: 'Closed', CANCEL: 'Cancel' };
-export const STATUS_KO = { OPEN: '접수', IN_PROGRESS: '조치중', DONE: '확인대기', CLOSED: '완료', CANCEL: '취소' };
+export const STATUS_LABEL = { DRAFT: 'Draft', OPEN: 'Open', IN_PROGRESS: 'In Progress', DONE: 'Done', CLOSED: 'Closed', CANCEL: 'Cancel' };
+export const STATUS_KO = { DRAFT: '임시저장', OPEN: '접수', IN_PROGRESS: '조치중', DONE: '확인대기', CLOSED: '완료', CANCEL: '취소' };
 export const TYPE_LABEL = { DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' };
 export const TYPE_ICON = { DEFECT: '🐞', IMPROVEMENT: '💡', INQUIRY: '❓' };
 export const CLOSE_LABEL = { VERIFIED: '정상 확인', AGREED: '합의 종료' };

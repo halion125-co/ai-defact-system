@@ -27,7 +27,7 @@ export async function renderMy(main, { query, navigate }) {
   async function load() {
     clear(content).append(h('div', { class: 'card-body' }, loadingState(5)));
     try {
-      const res = await api.issues.list({ mine: tab.key, size: 200, sort: tab.key === 'waiting' ? '-updatedAt' : '-updatedAt' });
+      const res = await api.issues.list({ mine: tab.key, size: 200, sort: '-updatedAt', ...(tab.key === 'reported' ? { includeDraft: 'true' } : {}) });
       clear(content);
       if (!res.items.length) {
         content.append(emptyState(tab.empty, tab.emptyDesc, tab.key === 'reported' ? h('a', { class: 'btn btn-primary', href: '#/new' }, '+ Issue 등록') : h('a', { class: 'btn btn-secondary', href: '#/issues/kanban?quick=unassigned' }, '미배정 Issue 보기')));
@@ -35,11 +35,13 @@ export async function renderMy(main, { query, navigate }) {
       }
       const tbody = h('tbody', {});
       for (const it of res.items) {
+        const isDraft = it.status === 'DRAFT';
+        const dest = isDraft ? `/new/${it.type.toLowerCase()}?draftId=${it.id}` : `/issues/${it.id}`;
         tbody.append(
           h(
             'tr',
-            { class: 'clickable', onClick: () => navigate(`/issues/${it.id}`) },
-            h('td', { class: 'id-cell' }, h('a', { href: `#/issues/${it.id}` }, it.id)),
+            { class: 'clickable', onClick: () => navigate(dest) },
+            h('td', { class: 'id-cell' }, h('a', { href: `#${dest}` }, it.id)),
             h('td', {}, typeBadge(it.type)),
             h('td', { class: 'title-cell', title: it.title }, it.title, it.reopened ? h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Re-open') : null),
             h('td', { class: 'env-cell' }, it.environment || '-'),
@@ -48,7 +50,7 @@ export async function renderMy(main, { query, navigate }) {
             h('td', {}, tab.key === 'reported' ? it.assignee || h('span', { class: 'badge warn' }, '미지정') : it.reporter),
             h('td', { class: 'nowrap' }, fmtDate(it.createdAt)),
             h('td', { class: 'nowrap muted' }, fmtDateTime(it.updatedAt)),
-            h('td', {}, tab.key === 'waiting' ? h('a', { class: 'btn btn-primary btn-xs', href: `#/issues/${it.id}` }, '재검증하기') : null)
+            h('td', {}, isDraft ? h('a', { class: 'btn btn-secondary btn-xs', href: `#${dest}` }, '이어 작성') : tab.key === 'waiting' ? h('a', { class: 'btn btn-primary btn-xs', href: `#/issues/${it.id}` }, '재검증하기') : null)
           )
         );
       }

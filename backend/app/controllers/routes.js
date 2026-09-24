@@ -105,11 +105,14 @@ function buildRoutes(c) {
   r.post('/api/issues/defects', async (ctx) => ({ status: 201, body: await c.issueService.createDefect(ctx.user, ctx.body) }));
   r.post('/api/issues/improvements', async (ctx) => ({ status: 201, body: await c.issueService.createImprovement(ctx.user, ctx.body) }));
   r.post('/api/issues/inquiries', async (ctx) => ({ status: 201, body: await c.issueService.createInquiry(ctx.user, ctx.body) }));
+  r.post('/api/issues/drafts', async (ctx) => ({ status: 201, body: await c.issueService.createDraft(ctx.user, ctx.body && ctx.body.type, ctx.body) }));
   r.get('/api/issues/:id', async (ctx) => ({ body: c.issueService.getDetail(ctx.user, ctx.params.id) }));
   r.patch('/api/issues/:id', async (ctx) => ({ body: await c.issueService.updateContent(ctx.user, ctx.params.id, ctx.body) }));
+  r.patch('/api/issues/:id/draft', async (ctx) => ({ body: await c.issueService.updateDraft(ctx.user, ctx.params.id, ctx.body) }));
 
   /* ---------- Actions ---------- */
   const actions = {
+    submit: (ctx) => c.issueService.submitDraft(ctx.user, ctx.params.id, ctx.body),
     claim: (ctx) => c.workflowService.claim(ctx.user, ctx.params.id, ctx.body),
     assign: (ctx) => c.workflowService.assign(ctx.user, ctx.params.id, ctx.body),
     priority: (ctx) => c.workflowService.changePriority(ctx.user, ctx.params.id, ctx.body),
@@ -197,7 +200,7 @@ function buildRoutes(c) {
   r.get('/api/my/counts', async (ctx) => {
     const operation = c.configService.getOperation();
     const all = c.repos.issueRepo.all();
-    const cnt = (mine) => applyFilters(all, { mine }, { operation, user: ctx.user }).length;
+    const cnt = (mine) => applyFilters(all, { mine, ...(mine === 'reported' ? { includeDraft: 'true' } : {}) }, { operation, user: ctx.user }).length;
     return { body: { reported: cnt('reported'), assigned: cnt('assigned'), waiting: cnt('waiting') } };
   });
 

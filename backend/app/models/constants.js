@@ -5,6 +5,7 @@ const ISSUE_PREFIX = { DEFECT: 'DEF', IMPROVEMENT: 'IMP', INQUIRY: 'INQ' };
 const PREFIX_TYPE = { DEF: 'DEFECT', IMP: 'IMPROVEMENT', INQ: 'INQUIRY' };
 
 const STATUS = {
+  DRAFT: 'DRAFT',
   OPEN: 'OPEN',
   IN_PROGRESS: 'IN_PROGRESS',
   DONE: 'DONE',
@@ -39,6 +40,7 @@ const EVENT = {
 
 /** Workflow Action별 허용 from → to (06_WORKFLOW §4) */
 const TRANSITIONS = {
+  submit: { from: [STATUS.DRAFT], to: STATUS.OPEN },
   start: { from: [STATUS.OPEN], to: STATUS.IN_PROGRESS },
   resolve: { from: [STATUS.IN_PROGRESS], to: STATUS.DONE },
   reopen: { from: [STATUS.DONE, STATUS.CLOSED], to: STATUS.IN_PROGRESS },

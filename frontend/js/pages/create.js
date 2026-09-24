@@ -3,9 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa } from '../ui.js';
-
-const DRAFT_KEY = 'dms.draft';
+import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa, errorBox, loadingState } from '../ui.js';
 
 function field({ label, required, help, input, q }) {
   return h('div', { class: 'field' }, h('label', { class: q ? 'q' : '', for: input.id }, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null, h('div', { class: 'error-msg hidden' }));
@@ -73,7 +71,7 @@ function successPanel(main, { id, title, type }, again) {
   );
 }
 
-export async function renderCreate(main, { params, navigate }) {
+export async function renderCreate(main, { params, query, navigate }) {
   const type = params.type;
   // 관리자가 환경/Priority 설정을 변경했을 수 있으므로 등록 화면 진입 시 최신 설정을 반영한다.
   try {
@@ -94,13 +92,30 @@ export async function renderCreate(main, { params, navigate }) {
     );
     return;
   }
-  if (type === 'defect') return renderDefectForm(main, navigate);
-  if (type === 'improvement') return renderSimpleForm(main, navigate, 'IMPROVEMENT');
-  if (type === 'inquiry') return renderSimpleForm(main, navigate, 'INQUIRY');
+  const draftId = query && query.draftId;
+  let draft = null;
+  if (draftId) {
+    main.append(pageHead('임시저장 이어 작성', ''), loadingState(4));
+    try {
+      const { issue } = await api.issues.get(draftId);
+      if (issue.status !== 'DRAFT') {
+        toast('이미 정식 등록된 Issue입니다.', 'info');
+        return navigate(`/issues/${draftId}`, {}, { replace: true });
+      }
+      draft = issue;
+    } catch (err) {
+      clear(main).append(pageHead('임시저장 이어 작성', ''), errorBox(err));
+      return;
+    }
+    clear(main);
+  }
+  if (type === 'defect') return renderDefectForm(main, navigate, draft);
+  if (type === 'improvement') return renderSimpleForm(main, navigate, 'IMPROVEMENT', draft);
+  if (type === 'inquiry') return renderSimpleForm(main, navigate, 'INQUIRY', draft);
   navigate('/new', {}, { replace: true });
 }
 
-function renderDefectForm(main, navigate) {
+function renderDefectForm(main, navigate, draft) {
   const files = [];
   const envs = store.activeEnvironments();
   const location = h('input', { class: 'input', id: 'location', placeholder: '예) 고객관리 > 고객정보 조회', maxlength: 200 });
@@ -108,6 +123,12 @@ function renderDefectForm(main, navigate) {
   if (envs.length === 1) env.value = envs[0].id;
   const symptom = h('textarea', { class: 'input', id: 'symptom', rows: 4, placeholder: '예) 고객명을 입력하고 조회 버튼을 누르면 결과가 표시되지 않고 로딩 상태가 계속됩니다.' });
   const expected = h('textarea', { class: 'input', id: 'expectedResult', rows: 3, placeholder: '예) 조회조건에 해당하는 고객 목록이 표시되어야 합니다.' });
+  if (draft) {
+    location.value = draft.location || '';
+    if (draft.environment) env.value = draft.environment.id;
+    symptom.value = draft.symptom || '';
+    expected.value = draft.expectedResult || '';
+  }
 
   // 재현 절차
   const stepsEl = h('div', { class: 'steps' });
@@ -158,9 +179,13 @@ function renderDefectForm(main, navigate) {
       toast(`재현 절차를 ${lines.length}단계로 나누어 입력했습니다.`, 'info');
     });
   }
-  addStep();
-  addStep();
-  addStep();
+  if (draft && draft.reproductionSteps && draft.reproductionSteps.length) {
+    for (const s of draft.reproductionSteps) addStep(s.text);
+  } else {
+    addStep();
+    addStep();
+    addStep();
+  }
 
   const wraps = {
     location: field({ label: '1. 어디에서 발생했나요?', required: true, input: location, q: true, help: '화면/메뉴/기능 위치' }),
@@ -170,21 +195,53 @@ function renderDefectForm(main, navigate) {
     expectedResult: field({ label: '4. 정상이라면 어떻게 되어야 하나요?', required: true, input: expected, q: true }),
     attachments: h('div', { class: 'field' }, h('label', { class: 'q' }, '5. 화면 캡처 / 증적'), fileInput(files)),
   };
-  const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, '결함 등록');
+  const submitLabel = draft ? '등록 완료' : '결함 등록';
+  const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, submitLabel);
+  const draftBtn = h('button', { type: 'button', class: 'btn btn-secondary btn-lg' }, '임시저장');
+  let draftId = draft ? draft.id : null;
+  let draftRevision = draft ? draft.revision : null;
   const errTop = h('div', { class: 'error-box hidden mb-16' });
-  const form = h('form', { class: 'create-form', novalidate: true }, errTop, ...Object.values(wraps), h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), submitBtn));
+  const form = h(
+    'form',
+    { class: 'create-form', novalidate: true },
+    errTop,
+    ...Object.values(wraps),
+    h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), draftBtn, submitBtn)
+  );
+
+  const collect = () => ({
+    location: location.value.trim(),
+    environmentId: env.value,
+    symptom: symptom.value.trim(),
+    reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
+    expectedResult: expected.value.trim(),
+  });
+
+  draftBtn.addEventListener('click', async () => {
+    setBusy(draftBtn, true, '임시저장');
+    try {
+      if (draftId) {
+        const res = await api.issues.updateDraft(draftId, draftRevision, collect());
+        draftRevision = res.revision;
+      } else {
+        const res = await api.issues.createDraft('DEFECT', collect());
+        draftId = res.id;
+        draftRevision = res.revision;
+        navigate(`/new/defect`, { draftId }, { replace: true });
+      }
+      toast('임시저장했습니다. "내가 등록"에서 이어 작성할 수 있습니다.', 'success');
+    } catch (err) {
+      toast(`임시저장에 실패했습니다. (${errorMessage(err)})`, 'error');
+    } finally {
+      setBusy(draftBtn, false, '임시저장');
+    }
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(form);
     errTop.classList.add('hidden');
-    const data = {
-      location: location.value.trim(),
-      environmentId: env.value,
-      symptom: symptom.value.trim(),
-      reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
-      expectedResult: expected.value.trim(),
-    };
+    const data = collect();
     let bad = false;
     if (!data.location) { showError(wraps.location, '발생 위치를 입력해주세요.'); bad = true; }
     if (!data.environmentId) { showError(wraps.environmentId, '발생 환경을 선택해주세요.'); bad = true; }
@@ -195,9 +252,11 @@ function renderDefectForm(main, navigate) {
       form.querySelector('.has-error input, .has-error textarea, .has-error select')?.focus();
       return;
     }
-    setBusy(submitBtn, true, '결함 등록');
+    setBusy(submitBtn, true, submitLabel);
     try {
-      const res = await api.issues.createDefect(data);
+      const res = draftId
+        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: data })
+        : await api.issues.createDefect(data);
       try {
         await uploadFiles(res.id, files);
       } catch (err) {
@@ -212,20 +271,28 @@ function renderDefectForm(main, navigate) {
       errTop.classList.remove('hidden');
       window.scrollTo(0, 0);
     } finally {
-      setBusy(submitBtn, false, '결함 등록');
+      setBusy(submitBtn, false, submitLabel);
     }
   });
 
-  main.append(pageHead('결함 등록', '문제를 다른 사람이 다시 재현할 수 있도록 간단하게 작성해주세요. 조치자와 Priority는 조치 담당자가 지정합니다.'), h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form)));
+  main.append(
+    pageHead(draft ? '임시저장 이어 작성 · 결함' : '결함 등록', '문제를 다른 사람이 다시 재현할 수 있도록 간단하게 작성해주세요. 조치자와 Priority는 조치 담당자가 지정합니다.'),
+    h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form))
+  );
   setTimeout(() => location.focus(), 0);
 }
 
-function renderSimpleForm(main, navigate, type) {
+function renderSimpleForm(main, navigate, type, draft) {
   const files = [];
   const isImp = type === 'IMPROVEMENT';
   const target = h('input', { class: 'input', id: 'target', placeholder: '예) 고객정보 조회 화면', maxlength: 200 });
   const body = h('textarea', { class: 'input', id: 'body', rows: 5, placeholder: isImp ? '예) 상태별 필터를 상단에서 바로 선택할 수 있도록 개선' : '예) 탈퇴 고객도 조회 대상에 포함되는지 확인이 필요합니다.' });
   const reason = isImp ? h('textarea', { class: 'input', id: 'reason', rows: 3, placeholder: '예) 결함이 많아지면 원하는 고객을 찾기 어려움' }) : null;
+  if (draft) {
+    target.value = draft.target || '';
+    body.value = (isImp ? draft.request : draft.question) || '';
+    if (reason) reason.value = draft.reason || '';
+  }
   const wraps = {
     target: field({ label: isImp ? '개선 대상' : '문의 대상', required: true, input: target, q: true }),
     body: field({ label: isImp ? '어떻게 개선했으면 좋겠나요?' : '문의 내용', required: true, input: body, q: true }),
@@ -233,23 +300,59 @@ function renderSimpleForm(main, navigate, type) {
     attachments: h('div', { class: 'field' }, h('label', { class: 'q' }, '참고자료'), fileInput(files)),
   };
   const label = isImp ? '개선요청 등록' : '문의 등록';
-  const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, label);
+  const submitLabel = draft ? '등록 완료' : label;
+  const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, submitLabel);
+  const draftBtn = h('button', { type: 'button', class: 'btn btn-secondary btn-lg' }, '임시저장');
+  let draftId = draft ? draft.id : null;
+  let draftRevision = draft ? draft.revision : null;
   const errTop = h('div', { class: 'error-box hidden mb-16' });
-  const form = h('form', { class: 'create-form', novalidate: true }, errTop, ...Object.values(wraps).filter(Boolean), h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), submitBtn));
+  const form = h(
+    'form',
+    { class: 'create-form', novalidate: true },
+    errTop,
+    ...Object.values(wraps).filter(Boolean),
+    h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), draftBtn, submitBtn)
+  );
+
+  const collect = () =>
+    isImp ? { target: target.value.trim(), request: body.value.trim(), reason: reason.value.trim() } : { target: target.value.trim(), question: body.value.trim() };
+
+  draftBtn.addEventListener('click', async () => {
+    setBusy(draftBtn, true, '임시저장');
+    try {
+      if (draftId) {
+        const res = await api.issues.updateDraft(draftId, draftRevision, collect());
+        draftRevision = res.revision;
+      } else {
+        const res = await api.issues.createDraft(type, collect());
+        draftId = res.id;
+        draftRevision = res.revision;
+        navigate(`/new/${isImp ? 'improvement' : 'inquiry'}`, { draftId }, { replace: true });
+      }
+      toast('임시저장했습니다. "내가 등록"에서 이어 작성할 수 있습니다.', 'success');
+    } catch (err) {
+      toast(`임시저장에 실패했습니다. (${errorMessage(err)})`, 'error');
+    } finally {
+      setBusy(draftBtn, false, '임시저장');
+    }
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearErrors(form);
     errTop.classList.add('hidden');
-    const data = isImp
-      ? { target: target.value.trim(), request: body.value.trim(), reason: reason.value.trim() }
-      : { target: target.value.trim(), question: body.value.trim() };
+    const data = collect();
     let bad = false;
     if (!data.target) { showError(wraps.target, `${isImp ? '개선' : '문의'} 대상을 입력해주세요.`); bad = true; }
     if ((isImp ? data.request : data.question).length < 5) { showError(wraps.body, '내용을 5자 이상 입력해주세요.'); bad = true; }
     if (bad) return;
-    setBusy(submitBtn, true, label);
+    setBusy(submitBtn, true, submitLabel);
     try {
-      const res = isImp ? await api.issues.createImprovement(data) : await api.issues.createInquiry(data);
+      const res = draftId
+        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: data })
+        : isImp
+          ? await api.issues.createImprovement(data)
+          : await api.issues.createInquiry(data);
       try {
         await uploadFiles(res.id, files);
       } catch (err) {
@@ -264,11 +367,12 @@ function renderSimpleForm(main, navigate, type) {
       errTop.textContent = `저장에 실패했습니다. 입력한 내용은 유지됩니다. (${errorMessage(err)})`;
       errTop.classList.remove('hidden');
     } finally {
-      setBusy(submitBtn, false, label);
+      setBusy(submitBtn, false, submitLabel);
     }
   });
-  main.append(pageHead(label, isImp ? '개선하고 싶은 내용을 간단히 적어주세요.' : '확인이 필요한 내용을 적어주세요.'), h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form)));
+  main.append(
+    pageHead(draft ? `임시저장 이어 작성 · ${isImp ? '개선요청' : '문의'}` : label, isImp ? '개선하고 싶은 내용을 간단히 적어주세요.' : '확인이 필요한 내용을 적어주세요.'),
+    h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form))
+  );
   setTimeout(() => target.focus(), 0);
 }
-
-void DRAFT_KEY;

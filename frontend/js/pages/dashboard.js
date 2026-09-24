@@ -19,6 +19,13 @@ function isoDate(d) {
 }
 
 export async function renderDashboard(main, { query, navigate }) {
+  // 쿼리 없이 진입(사이드바 메뉴 등)하면 이 화면에서 마지막으로 쓰던 필터를 복원한다.
+  if (Object.keys(query).length === 0) {
+    const saved = store.loadFilter('dashboard');
+    if (saved && Object.keys(saved).length) return navigate('/dashboard', saved, { replace: true });
+  }
+  store.saveFilter('dashboard', query);
+
   const type = query.type || 'DEFECT';
   const period = query.period || '';
   const filter = { type, environmentId: query.environmentId || '', priority: query.priority || '' };

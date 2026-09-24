@@ -53,6 +53,13 @@ export function kanbanCard(it, { onClaim, navigate }) {
 }
 
 export async function renderKanban(main, { query, navigate }) {
+  // 쿼리 없이 진입(사이드바 메뉴 등)하면 이 화면에서 마지막으로 쓰던 필터를 복원한다.
+  if (Object.keys(query).length === 0) {
+    const saved = store.loadFilter('kanban');
+    if (saved && Object.keys(saved).length) return navigate('/issues/kanban', saved, { replace: true });
+  }
+  store.saveFilter('kanban', query);
+
   const quick = query.quick || 'all';
   const filterBar = buildFilterBar(query, (q) => navigate('/issues/kanban', { ...q, quick }), { compact: true, hideStatus: true });
   const chips = h('div', { class: 'chip-group' });

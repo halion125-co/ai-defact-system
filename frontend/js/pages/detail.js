@@ -47,6 +47,11 @@ export async function renderDetail(main, { params, navigate }) {
     if (!silent) clear(root).append(loadingState(8));
     try {
       data = await api.issues.get(issueId);
+      if (data.issue.status === 'DRAFT') {
+        const typePath = { DEFECT: 'defect', IMPROVEMENT: 'improvement', INQUIRY: 'inquiry' }[data.issue.type];
+        navigate(`/new/${typePath}`, { draftId: issueId }, { replace: true });
+        return;
+      }
       conflict = false;
       draw();
     } catch (err) {

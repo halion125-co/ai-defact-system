@@ -105,8 +105,9 @@ function applyFilters(issues, query = {}, ctx = {}) {
   const statuses = query.status === 'ALL' ? null : csv(query.status);
   const priorities = csv(query.priority);
   const envs = csv(query.environmentId);
-  // 기본 목록/대시보드는 Cancel 제외. status=CANCEL 명시, status=ALL, includeCancel=true 시 포함.
+  // 기본 목록/대시보드는 Cancel/Draft 제외. status=CANCEL|DRAFT 명시, status=ALL, includeCancel/includeDraft=true 시 포함.
   const includeCancel = query.includeCancel === 'true' || query.status === 'ALL';
+  const includeDraft = query.includeDraft === 'true' || query.status === 'ALL';
 
   let from = null;
   let to = null;
@@ -119,11 +120,17 @@ function applyFilters(issues, query = {}, ctx = {}) {
     to = r ? r.end : new Date(query.createdTo).getTime();
   }
 
+  const isAdmin = !!(ctx.user && ctx.user.isQualityAdmin);
   return issues.filter((issue) => {
     if (types && !types.includes(issue.type)) return false;
     if (statuses) {
       if (!statuses.includes(issue.status)) return false;
-    } else if (issue.status === STATUS.CANCEL && !includeCancel) return false;
+    } else {
+      if (issue.status === STATUS.CANCEL && !includeCancel) return false;
+      if (issue.status === STATUS.DRAFT && !includeDraft) return false;
+    }
+    // 임시저장은 본인 Reporter 또는 Quality Admin만 조회 가능(다른 사용자에게는 어떤 status 조합으로도 노출되지 않음)
+    if (issue.status === STATUS.DRAFT && !isAdmin && !(ctx.user && issue.reporter && issue.reporter.userId === ctx.user.userId)) return false;
     if (priorities && !priorities.includes(issue.priority)) return false;
     if (envs && !(issue.environment && envs.includes(issue.environment.id))) return false;
     if ((from || to) && !inRange(issue.createdAt, from, to)) return false;

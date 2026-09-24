@@ -124,6 +124,51 @@ function inquiryCreate(body) {
   };
 }
 
+/**
+ * 임시저장(DRAFT) 생성 검증. 유형만 정해지면 저장 가능하도록 필수값을 요구하지 않는다.
+ * 값이 있는 필드만 정규화해서 반환하고, 입력하지 않은 필드는 빈 값으로 채운다(추후 정식 등록 시 defectCreate 등으로 재검증).
+ */
+function draftCreate(type, body, activeEnvironments) {
+  requireObject(body);
+  if (type === 'DEFECT') {
+    const environmentId = body.environmentId ? text(body.environmentId, { field: 'environmentId', label: '발생 환경', required: false, max: 50 }) : '';
+    const env = environmentId ? activeEnvironments.find((e) => e.id === environmentId && e.active) : null;
+    return {
+      location: text(body.location, { field: 'location', label: '발생 위치', required: false, max: 200 }),
+      environment: env ? { id: env.id, displayNameSnapshot: env.displayName } : null,
+      symptom: text(body.symptom, { field: 'symptom', label: '발생 현상', required: false, max: 2000, multiline: true }),
+      reproductionSteps: Array.isArray(body.reproductionSteps) ? reproductionStepsLoose(body.reproductionSteps) : [],
+      expectedResult: text(body.expectedResult, { field: 'expectedResult', label: '기대 결과', required: false, max: 2000, multiline: true }),
+    };
+  }
+  if (type === 'IMPROVEMENT') {
+    return {
+      target: text(body.target, { field: 'target', label: '개선 대상', required: false, max: 200 }),
+      request: text(body.request, { field: 'request', label: '개선 내용', required: false, max: 2000, multiline: true }),
+      reason: text(body.reason, { field: 'reason', label: '개선 필요 사유', required: false, max: 2000, multiline: true }),
+    };
+  }
+  if (type === 'INQUIRY') {
+    return {
+      target: text(body.target, { field: 'target', label: '문의 대상', required: false, max: 200 }),
+      question: text(body.question, { field: 'question', label: '문의 내용', required: false, max: 2000, multiline: true }),
+    };
+  }
+  throw fail('유형이 올바르지 않습니다.', 'type');
+}
+
+/** draft 전용: 빈 재현 절차 허용, 내용이 있는 단계만 정규화 */
+function reproductionStepsLoose(value) {
+  if (!Array.isArray(value)) return [];
+  const steps = value
+    .map((s) => (typeof s === 'string' ? s : s && s.text))
+    .map((s) => cleanText(s))
+    .filter(Boolean)
+    .slice(0, 50)
+    .map((s) => s.slice(0, 500));
+  return steps.map((t, i) => ({ order: i + 1, text: t }));
+}
+
 /** 등록내용 수정 changes 검증. allowlist 밖 필드는 거부 */
 function contentChanges(type, changes, activeEnvironments) {
   if (!changes || typeof changes !== 'object') throw fail('changes가 필요합니다.', 'changes');
@@ -286,6 +331,7 @@ module.exports = {
   defectCreate,
   improvementCreate,
   inquiryCreate,
+  draftCreate,
   contentChanges,
   reason,
   resolution,

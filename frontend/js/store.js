@@ -5,6 +5,7 @@ import { api } from './api.js';
  * 브라우저에는 employeeId만 저장(E2-04). 세션 Actor는 서버가 결정.
  */
 const LS_KEY = 'dms.lastEmployeeId';
+const FILTER_LS_PREFIX = 'dms.filter.';
 
 export const store = {
   user: null,
@@ -91,5 +92,25 @@ export const store = {
   },
   activePriorities() {
     return ((this.project && this.project.priorities) || []).filter((p) => p.active !== false).sort((a, b) => a.order - b.order);
+  },
+
+  /**
+   * Dashboard/Kanban/목록의 마지막 조회 조건을 화면별로 기억한다(로그아웃 후에도 유지, 브라우저 단위).
+   * key는 화면 구분자(예: 'dashboard', 'kanban', 'list').
+   */
+  saveFilter(key, query) {
+    try {
+      localStorage.setItem(FILTER_LS_PREFIX + key, JSON.stringify(query || {}));
+    } catch {
+      /* ignore */
+    }
+  },
+  loadFilter(key) {
+    try {
+      const raw = localStorage.getItem(FILTER_LS_PREFIX + key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   },
 };

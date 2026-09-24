@@ -226,6 +226,7 @@ button { cursor: pointer; }
 .badge-en { font-size: 10px; font-weight: 500; opacity: 0.7; }
 .badge-en:empty { display: none; }
 .badge-lg { height: 26px; padding: 0 10px; font-size: 13px; }
+.badge.status-DRAFT { background: #F2F0FF; color: #5B4FCF; border: 1px dashed #B8ACF0; }
 .badge.status-OPEN { background: var(--gray-soft); color: #475467; }
 .badge.status-IN_PROGRESS { background: var(--blue-soft); color: var(--blue); }
 .badge.status-DONE { background: var(--purple-soft); color: var(--purple); }

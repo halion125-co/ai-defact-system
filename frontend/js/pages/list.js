@@ -27,7 +27,7 @@ export function buildFilterBar(query, onChange, { compact = false, hideStatus = 
     return s;
   };
   bar.append(sel('type', '유형 전체', Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))));
-  if (!hideStatus) bar.append(sel('status', '상태 전체', [...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })), { value: 'ALL', label: 'Cancel 포함 전체' }]));
+  if (!hideStatus) bar.append(sel('status', '상태 전체', [...Object.entries(STATUS_LABEL).filter(([value]) => value !== 'DRAFT').map(([value, label]) => ({ value, label })), { value: 'ALL', label: 'Cancel 포함 전체' }]));
   bar.append(sel('environmentId', '환경 전체', (store.project ? store.project.environments : []).map((e) => ({ value: e.id, label: e.displayName }))));
   bar.append(sel('priority', 'Priority 전체', [...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }]));
   const assignee = h('select', { class: `input${compact ? ' input-sm' : ''}`, 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), h('option', { value: store.user.userId }, '내가 조치'));
@@ -51,7 +51,18 @@ export function buildFilterBar(query, onChange, { compact = false, hideStatus = 
 }
 
 export async function renderList(main, { query, navigate }) {
-  const go = (q) => navigate('/issues/list', q);
+  // 쿼리 없이 진입(사이드바 메뉴 등)하면 이 화면에서 마지막으로 쓰던 필터를 복원한다.
+  // Dashboard/Kanban Drill-down처럼 조건을 들고 들어온 경우는 그 조건을 그대로 존중한다.
+  if (Object.keys(query).length === 0) {
+    const saved = store.loadFilter('list');
+    if (saved && Object.keys(saved).length) return navigate('/issues/list', saved, { replace: true });
+  }
+  store.saveFilter('list', query);
+
+  const go = (q) => {
+    store.saveFilter('list', q); // 필터 초기화(go({}))를 포함해 항상 이동 직전에 저장해 다음 진입 시 복원 루프를 방지한다.
+    navigate('/issues/list', q);
+  };
   const search = h('input', { class: 'input', type: 'search', placeholder: '검색: ID, 제목, 현상, 등록자, Comment', style: { minWidth: '260px' } });
   search.value = query.q || '';
   search.addEventListener('keydown', (e) => e.key === 'Enter' && go({ ...query, q: search.value.trim(), page: undefined }));

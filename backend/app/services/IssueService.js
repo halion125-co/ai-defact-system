@@ -73,7 +73,7 @@ class IssueService {
 
   /* ---------------- 생성 ---------------- */
 
-  async _createBase(type, user, fields, title) {
+  async _createBase(type, user, fields, title, status = STATUS.OPEN) {
     const prefix = ISSUE_PREFIX[type];
     const n = await this.sequenceRepo.next(prefix);
     const id = formatIssueId(prefix, n);
@@ -87,7 +87,7 @@ class IssueService {
       title,
       ...fields,
       priority: PRIORITY.UNASSIGNED,
-      status: STATUS.OPEN,
+      status,
       reporter: actor,
       assignee: null,
       attachments: [],
@@ -101,11 +101,11 @@ class IssueService {
       updatedAt: now,
     };
     const evId = `EVT-${padNumber(await this.sequenceRepo.next('EVT'), 6)}`;
-    const ev = { eventId: evId, eventType: EVENT.CREATED, actor, timestamp: now, data: { type } };
+    const ev = { eventId: evId, eventType: EVENT.CREATED, actor, timestamp: now, data: { type, status } };
     issue.history.push(ev);
     await this.issueRepo.withLock(id, async () => this.issueRepo.save(issue));
     this.auditRepo.append({ ...ev, issueId: id, actorId: actor.userId });
-    if (this.logger) this.logger.info('Issue 생성', { id, type, actor: actor.userId });
+    if (this.logger) this.logger.info('Issue 생성', { id, type, status, actor: actor.userId });
     return { id, revision: issue.revision, status: issue.status, title: issue.title };
   }
 
@@ -125,6 +125,64 @@ class IssueService {
     return this._createBase('INQUIRY', user, data, makeTitle(data.question));
   }
 
+  _draftTitle(type, data) {
+    const src = type === 'DEFECT' ? data.symptom : type === 'IMPROVEMENT' ? data.request : data.question;
+    return src ? makeTitle(src) : '(제목 없음, 임시저장)';
+  }
+
+  /** 임시저장(DRAFT) 생성: 유형만 정해지면 나머지는 비워둔 채 저장 가능 */
+  async createDraft(user, type, body) {
+    if (!ISSUE_PREFIX[type]) throw errors.validation('유형이 올바르지 않습니다.', 'type');
+    const data = V.draftCreate(type, body, this.configService.activeEnvironments());
+    return this._createBase(type, user, data, this._draftTitle(type, data), STATUS.DRAFT);
+  }
+
+  /** 임시저장 내용 수정(작성 이어하기). Reporter 본인만 가능, DRAFT 상태에서만 허용 */
+  async updateDraft(user, issueId, body) {
+    V.requireObject(body);
+    const expectedRevision = V.expectedRevision(body);
+    const current = this.getRaw(issueId);
+    if (current.status !== STATUS.DRAFT) throw errors.validation('임시저장 상태의 Issue만 수정할 수 있습니다.');
+    if (!P.isReporter(user, current)) throw errors.forbidden('본인이 작성한 임시저장만 수정할 수 있습니다.');
+    // changes에 없는 필드는 기존 값을 유지한다(전체 교체가 아닌 부분 갱신).
+    const merged = { ...current, ...(body.changes || {}) };
+    if (body.changes && body.changes.environmentId !== undefined) merged.environmentId = body.changes.environmentId;
+    else if (current.environment) merged.environmentId = current.environment.id;
+    const data = V.draftCreate(current.type, merged, this.configService.activeEnvironments());
+    const { issue } = await this.mutate(issueId, user, expectedRevision, async (iss, ctx) => {
+      const before = {};
+      for (const k of Object.keys(data)) before[k] = iss[k];
+      Object.assign(iss, data);
+      iss.title = this._draftTitle(iss.type, data);
+      ctx.event(EVENT.UPDATED, { before, after: data, data: { fields: Object.keys(data), draft: true } });
+    });
+    return { id: issue.id, revision: issue.revision };
+  }
+
+  /** 임시저장을 정식 등록으로 전환: 유형별 필수값을 정식 기준으로 재검증 후 OPEN으로 전이 */
+  async submitDraft(user, issueId, body) {
+    V.requireObject(body || {});
+    const expectedRevision = V.expectedRevision(body);
+    const current = this.getRaw(issueId);
+    if (current.status !== STATUS.DRAFT) throw errors.validation('임시저장 상태의 Issue만 등록할 수 있습니다.');
+    if (!P.isReporter(user, current)) throw errors.forbidden('본인이 작성한 임시저장만 등록할 수 있습니다.');
+    const merged = { ...current, ...(body.changes || {}) };
+    const data =
+      current.type === 'DEFECT'
+        ? V.defectCreate({ ...merged, environmentId: (body.changes && body.changes.environmentId) || (current.environment && current.environment.id) }, this.configService.activeEnvironments())
+        : current.type === 'IMPROVEMENT'
+          ? V.improvementCreate(merged)
+          : V.inquiryCreate(merged);
+    const title = this._draftTitle(current.type, data) === '(제목 없음, 임시저장)' ? current.title : this._draftTitle(current.type, data);
+    const { issue } = await this.mutate(issueId, user, expectedRevision, async (iss, ctx) => {
+      Object.assign(iss, data);
+      iss.title = title;
+      iss.status = STATUS.OPEN;
+      ctx.event(EVENT.STATUS_CHANGED, { before: { status: STATUS.DRAFT }, after: { status: STATUS.OPEN }, data: { mode: 'DRAFT_SUBMIT' } });
+    });
+    return { id: issue.id, revision: issue.revision, status: issue.status };
+  }
+
   /* ---------------- 조회 ---------------- */
 
   getRaw(issueId) {
@@ -138,6 +196,8 @@ class IssueService {
 
   getDetail(user, issueId) {
     const issue = this.getRaw(issueId);
+    // 임시저장은 작성자 본인 또는 Quality Admin만 조회 가능(URL 직접 접근으로도 타인에게 노출되지 않음)
+    if (issue.status === STATUS.DRAFT && !P.isAdmin(user) && !P.isReporter(user, issue)) throw errors.notFound(`Issue를 찾을 수 없습니다: ${issueId}`);
     const operation = this.configService.getOperation();
     const permissions = P.permissionHints(user, issue, operation);
     // 숨김 Comment는 Admin 외에는 본문 미노출(원본은 파일/Audit 보존). history의 COMMENTED/COMMENT_HIDDEN 이벤트도 함께 마스킹
