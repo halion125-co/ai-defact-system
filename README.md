@@ -40,6 +40,8 @@ node backend/server.js
 
 Windows: `start.bat`, Linux: `./start.sh`
 
+Docker: `docker compose up -d --build` (Dockerfile/docker-compose.yml 포함). NAS(Synology 등)에 올려 외부 접속을 열고 싶다면 [docs/NAS_DEPLOYMENT_GUIDE.md](docs/NAS_DEPLOYMENT_GUIDE.md)의 보안 경고를 먼저 읽을 것.
+
 ## 설정
 
 `config/server.config.json` (환경변수 `DMS_PORT`, `DMS_HOST`, `DMS_DATA_DIR`, `DMS_UPLOAD_DIR`, `DMS_BACKUP_DIR`, `DMS_LOG_DIR`, `DMS_BOOTSTRAP_ADMIN`, `DMS_CONFIG`가 우선)

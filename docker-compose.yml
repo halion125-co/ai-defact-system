@@ -1,0 +1,20 @@
+services:
+  defect-service:
+    build: .
+    image: ai-defect-system:latest
+    container_name: ai-defect-system
+    restart: unless-stopped
+    ports:
+      # 왼쪽 값(호스트 포트)만 NAS 사정에 맞게 바꾸면 된다. 예: "80:8080" 또는 "8080:8080"
+      - "8080:8080"
+    environment:
+      - DMS_HOST=0.0.0.0
+      - DMS_PORT=8080
+      - DMS_BOOTSTRAP_ADMIN=admin
+      - TZ=Asia/Seoul
+    volumes:
+      # NAS 재부팅/컨테이너 재생성 후에도 데이터가 유지되도록 호스트 경로에 영구 저장한다.
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./backup:/app/backup
+      - ./logs:/app/logs
