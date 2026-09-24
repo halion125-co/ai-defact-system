@@ -64,11 +64,20 @@ function createStaticHandler(rootDir) {
     }
     const ext = path.extname(file).toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
-    const isHtml = ext === '.html';
+    // JS/CSS/HTML 전부 no-cache: 매 요청 재검증하되 mtime 기반 304로 대역폭은 아낀다.
+    // (배포 주기가 잦은 사내 서비스에서 max-age 장기 캐시는 업데이트가 반영되지 않는 혼란을 유발한다)
+    const lastModified = stat.mtime.toUTCString();
+    const ifModifiedSince = req.headers['if-modified-since'];
+    if (ifModifiedSince && ifModifiedSince === lastModified) {
+      res.writeHead(304, { 'Cache-Control': 'no-cache', 'Last-Modified': lastModified });
+      res.end();
+      return true;
+    }
     res.writeHead(200, {
       'Content-Type': type,
       'Content-Length': stat.size,
-      'Cache-Control': isHtml ? 'no-cache' : 'public, max-age=3600',
+      'Cache-Control': 'no-cache',
+      'Last-Modified': lastModified,
     });
     if (req.method === 'HEAD') {
       res.end();
