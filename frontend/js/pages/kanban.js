@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, priorityBadge, typeBadge, fmtDate, errorBox, loadingState, toast, errorMessage, confirmModal } from '../ui.js';
+import { h, clear, pageHead, priorityBadge, typeBadge, fmtDate, errorBox, loadingState, toast, errorMessage, confirmModal, icon } from '../ui.js';
 import { buildFilterBar } from './list.js';
 
 const COLS = [
@@ -33,20 +33,19 @@ export function kanbanCard(it, { onClaim, navigate }) {
     h(
       'div',
       { class: 'meta' },
-      h('div', {}, typeBadge(it.type), it.environment ? h('span', { style: { marginLeft: '6px' } }, it.environment) : null),
-      h('div', {}, 'Reporter ', h('strong', {}, it.reporter)),
-      h('div', {}, 'Assignee ', it.assignee ? h('strong', {}, it.assignee) : h('span', { class: 'warn' }, '미지정 ⚠'))
+      h('div', {}, typeBadge(it.type), it.environment ? h('span', { class: 'env' }, it.environment) : null),
+      h('div', {}, '담당자 ', it.assignee ? h('strong', {}, it.assignee) : h('span', { class: 'warn' }, icon('warn', { size: 11 }), ' 미지정'))
     ),
     h(
       'div',
       { class: 'foot' },
-      h('span', {}, fmtDate(it.createdAt)),
-      h('span', {}, it.deploymentStatus === 'DEPLOYED' ? '배포완료' : it.status === 'DONE' && store.operation && store.operation.enableDeployment ? '배포대기' : '', it.reopened ? ' · Re-open' : '', it.commentCount ? ` · 💬${it.commentCount}` : '')
+      h('span', {}, fmtDate(it.updatedAt || it.createdAt)),
+      h('span', {}, it.deploymentStatus === 'DEPLOYED' ? '배포완료' : it.status === 'DONE' && store.operation && store.operation.enableDeployment ? '배포대기' : '', it.reopened ? ' · Re-open' : '', it.commentCount ? ` · ${it.commentCount}` : '')
     )
   );
   if (canClaim && me) {
     card.append(
-      h('div', { class: 'mt-8' }, h('button', { class: 'btn btn-primary btn-xs', onClick: (e) => { e.stopPropagation(); onClaim(it); } }, '내가 조치'))
+      h('div', { class: 'mt-8' }, h('button', { class: 'btn btn-primary btn-xs', onClick: (e) => { e.stopPropagation(); onClaim(it); } }, '내게 배정'))
     );
   }
   return card;
@@ -67,7 +66,7 @@ export async function renderKanban(main, { query, navigate }) {
   const board = h('div', { class: 'kanban' });
   const cancelNote = h('div', { class: 'small muted mt-8' });
   main.append(
-    pageHead('Issue 관리 · Kanban', '상태별 Issue 현황을 확인합니다. 상태 변경은 Issue 상세의 Action 버튼으로만 수행합니다.', h('a', { class: 'btn btn-primary', href: '#/new' }, '+ Issue 등록')),
+    pageHead('Issue 관리 · Kanban', '상태별 Issue 현황을 확인합니다. 상태 변경은 Issue 상세의 Action 버튼으로만 수행합니다.', h('a', { class: 'btn btn-secondary', href: '#/new' }, '+ Issue 등록')),
     h('div', { class: 'filter-bar' }, chips, h('div', { class: 'grow' }), filterBar),
     board,
     cancelNote
@@ -87,7 +86,7 @@ export async function renderKanban(main, { query, navigate }) {
         const items = res.items.filter((i) => i.status === col.code);
         const cards = h('div', { class: 'kcards' });
         for (const it of items) cards.append(kanbanCard(it, { navigate, onClaim: claim }));
-        board.append(h('section', { class: `kcol${items.length ? '' : ' empty-col'}`, 'aria-label': col.label }, h('div', { class: 'kcol-head' }, h('span', { class: 't' }, col.label, h('small', {}, col.ko)), h('span', { class: 'n' }, items.length)), cards));
+        board.append(h('section', { class: `kcol${items.length ? '' : ' empty-col'}`, 'aria-label': col.label }, h('div', { class: 'kcol-head' }, h('span', { class: 't' }, col.ko, h('small', {}, col.label)), h('span', { class: 'n' }, items.length)), cards));
       }
       cancelNote.replaceChildren(h('a', { href: `#/issues/list?status=CANCEL` }, 'Cancel된 Issue는 목록에서 조회 →'), res.total > 500 ? ` · 표시 한도 500건 (전체 ${res.total}건) — 필터를 좁혀주세요.` : '');
     } catch (err) {

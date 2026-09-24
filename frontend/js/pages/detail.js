@@ -1,12 +1,12 @@
 /**
- * SCR-032 Issue Detail. Summary / 등록내용 / 조치·Traceability / Action Bar / Timeline / Composer.
+ * SCR-032 Issue Detail. 2-column 업무 처리 화면: 좌측 본문(내용/증적/활동), 우측 처리 패널(다음 작업/조치자/Priority/상태/Traceability).
  * 모든 Mutation은 expectedRevision 포함. 409 시 conflict 안내 + 최신 재조회.
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
 import {
   h, clear, card, statusBadge, priorityBadge, typeBadge, deployBadge, fmtDateTime, fmtBytes, userLabel, initials, toast, errorMessage, errorBox, conflictBox,
-  loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue, josa,
+  loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue, josa, icon,
 } from '../ui.js';
 
 const FIELD_LABEL = {
@@ -35,6 +35,8 @@ export async function renderDetail(main, { params, navigate }) {
   const issueId = params.id;
   let data = null;
   let conflict = false;
+  let activityTab = 'all'; // all | comment | system
+  let activityExpanded = false;
   const root = h('div', {});
   main.append(root);
   try {
@@ -76,18 +78,57 @@ export async function renderDetail(main, { params, navigate }) {
   }
 
   function draw() {
+    /**
+     * 다음 작업 판단: 상태별로 가장 자연스러운 Primary 액션 1개 + 나머지 보조 액션.
+     * { primary: {label, onClick, variant}|null, secondary: [...], note }
+     * 액션 핸들러(openResolve 등)는 이 draw() 스코프 하단에 함수 선언되어 있어 호이스팅으로 참조 가능하다.
+     */
+    function nextAction(issue, p) {
+      const st = issue.status;
+      const secondary = [];
+      let primary = null;
+      let note = null;
+
+      if (st === 'CANCEL') {
+        note = `취소된 Issue입니다.${issue.cancelReason ? ` 사유: ${issue.cancelReason}` : ''}`;
+      } else if (st === 'CLOSED') {
+        note = '종료된 Issue입니다.';
+        if (p.canReopen) secondary.push({ label: 'Re-open', onClick: openReopen, variant: 'btn-warning' });
+      } else {
+        if (st !== 'CANCEL' && p.canClaim) primary = { label: '내게 배정', onClick: doClaim, variant: 'btn-primary' };
+        else if (p.canStart) primary = { label: '조치 시작', onClick: doStart, variant: 'btn-primary' };
+        else if (p.canResolve) primary = { label: '조치 완료', onClick: openResolve, variant: 'btn-primary' };
+        else if (p.canCloseVerified) primary = { label: '정상 확인', onClick: openCloseVerified, variant: 'btn-success' };
+        else if (p.canCloseAgreed && !(p.canCloseVerified && !p.isAdmin)) primary = { label: p.isAdmin ? '합의 Close' : 'Close', onClick: openCloseAgreed, variant: 'btn-success' };
+
+        if (st === 'DONE' && p.isReporter && !p.isAdmin && !primary) note = '조치가 완료되었습니다. 재검증 후 결과를 선택해주세요.';
+
+        if (p.canDeploy && !(issue.deployment && issue.deployment.status === 'DEPLOYED' && st === 'CLOSED')) {
+          secondary.push({ label: issue.deployment && issue.deployment.status === 'DEPLOYED' ? '배포 정보 갱신' : '배포 완료', onClick: openDeploy, variant: 'btn-secondary' });
+        }
+        if (p.canReopen) secondary.push({ label: '재조치 요청', onClick: openReopen, variant: 'btn-secondary' });
+        if (p.canCloseVerified && primary && primary.label !== '정상 확인') secondary.push({ label: '정상 확인', onClick: openCloseVerified, variant: 'btn-secondary' });
+        if (p.canCloseAgreed && primary && !primary.label.includes('Close')) secondary.push({ label: p.isAdmin ? '합의 Close' : 'Close', onClick: openCloseAgreed, variant: 'btn-secondary' });
+        if (p.canCancel) secondary.push({ label: 'Cancel', onClick: openCancel, variant: 'btn-danger-outline' });
+
+        if (!primary && !secondary.length && !note) {
+          note = issue.assignee ? '현재 수행 가능한 작업이 없습니다. 조치자 또는 Quality Admin이 진행합니다.' : '조치자가 지정되지 않았습니다. [내게 배정]으로 받거나 Quality Admin이 배정합니다.';
+        }
+      }
+      return { primary, secondary, note };
+    }
+
     const { issue, permissions: p } = data;
     const op = store.operation || {};
     const me = store.user;
     clear(root);
     if (conflict) root.append(conflictBox(() => load()));
 
-    /* ---------- Summary ---------- */
-    const idCopy = h('button', { class: 'btn btn-secondary btn-xs', onClick: () => copyText(issue.id).then(() => toast(`${issue.id} 복사됨 · Commit 예: [${issue.id}] 수정내용`, 'info')) }, 'ID 복사');
+    /* ---------- 상단 요약 ---------- */
+    const idCopy = h('button', { class: 'btn btn-ghost btn-xs', title: 'ID 복사', 'aria-label': 'ID 복사', onClick: () => copyText(issue.id).then(() => toast(`${issue.id} 복사됨 · Commit 예: [${issue.id}] 수정내용`, 'info')) }, 'ID 복사');
     const summaryHead = h('div', { class: 'summary-head' }, h('span', { class: 'id' }, issue.id), idCopy, typeBadge(issue.type, true), priorityBadge(issue.priority, true), statusBadge(issue.status, true), issue.reopenCount ? h('span', { class: 'badge warn badge-lg' }, `Re-open ${issue.reopenCount}회`) : null, issue.status === 'DONE' && op.enableDeployment ? deployBadge(issue.deployment && issue.deployment.status) : null);
-    const summaryActions = h('div', { class: 'flex' });
-    if (p.canEditContent && issue.status !== 'CANCEL') summaryActions.append(h('button', { class: 'btn btn-secondary btn-sm', onClick: openEdit }, '등록내용 수정'));
-    if (p.canAdminOverride) summaryActions.append(h('button', { class: 'btn btn-ghost btn-sm', onClick: openAdminOverride }, '관리자: 상태 강제 변경'));
+    const moreMenu = buildMoreMenu(issue, p);
+    const summaryActions = h('div', { class: 'flex' }, p.canEditContent && issue.status !== 'CANCEL' ? h('button', { class: 'btn btn-secondary btn-sm', onClick: openEdit }, '등록내용 수정') : null, moreMenu);
     const summary = h(
       'section',
       { class: 'card' },
@@ -100,14 +141,14 @@ export async function renderDetail(main, { params, navigate }) {
           'div',
           { class: 'meta-grid' },
           h('div', {}, h('div', { class: 'k' }, '등록자'), h('div', { class: 'v' }, userLabel(issue.reporter))),
-          h('div', {}, h('div', { class: 'k' }, '조치자'), h('div', { class: 'v' }, issue.assignee ? userLabel(issue.assignee) : h('span', { class: 'badge warn' }, '미지정 ⚠'))),
+          h('div', {}, h('div', { class: 'k' }, '조치자'), h('div', { class: 'v' }, issue.assignee ? userLabel(issue.assignee) : h('span', { class: 'badge warn' }, icon('warn', { size: 11 }), ' 미지정'))),
           h('div', {}, h('div', { class: 'k' }, '환경'), h('div', { class: 'v' }, issue.environment ? envName(issue.environment) : '-')),
           h('div', {}, h('div', { class: 'k' }, '등록일'), h('div', { class: 'v' }, fmtDateTime(issue.createdAt), ' ', h('small', {}, `· 업데이트 ${fmtDateTime(issue.updatedAt)}`)))
         )
       )
     );
 
-    /* ---------- 등록 내용 ---------- */
+    /* ---------- 결함 내용 ---------- */
     const block = (title, body) => h('div', { class: 'content-block' }, h('h4', {}, title), body);
     const contentBody = h('div', {});
     if (issue.type === 'DEFECT') {
@@ -122,31 +163,20 @@ export async function renderDetail(main, { params, navigate }) {
     } else {
       contentBody.append(block('문의 대상', h('div', { class: 'body' }, issue.target)), block('문의 내용', h('div', { class: 'body' }, issue.question)));
     }
-    contentBody.append(block('첨부파일', attachmentList(issue, p)));
+    contentBody.append(block('첨부파일 / 증적', attachmentZone(issue, p)));
     const content = card(`${{ DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' }[issue.type]} 내용`, contentBody);
 
-    /* ---------- Action Bar ---------- */
-    const actions = h('div', { class: 'action-bar' });
-    const st = issue.status;
-    if (st !== 'CLOSED' && st !== 'CANCEL' && p.canClaim) actions.append(h('button', { class: 'btn btn-primary', onClick: doClaim }, '내가 조치'));
-    if (p.canStart) actions.append(h('button', { class: 'btn btn-primary', onClick: doStart }, '조치 시작'));
-    if (p.canResolve) actions.append(h('button', { class: 'btn btn-primary', onClick: openResolve }, '조치 완료'));
-    if (p.canDeploy && !(issue.deployment && issue.deployment.status === 'DEPLOYED' && st === 'CLOSED')) actions.append(h('button', { class: 'btn btn-secondary', onClick: openDeploy }, issue.deployment && issue.deployment.status === 'DEPLOYED' ? '배포 정보 갱신' : '배포 완료'));
-    if (st === 'DONE' && p.isReporter && !p.isAdmin) actions.append(h('div', { class: 'note' }, '조치가 완료되었습니다. 재검증 후 결과를 선택해주세요.'));
-    if (p.canReopen) actions.append(h('button', { class: 'btn btn-warning', onClick: openReopen }, st === 'CLOSED' ? 'Re-open' : '재조치 요청'));
-    if (p.canCloseVerified) actions.append(h('button', { class: 'btn btn-success', onClick: openCloseVerified }, '정상 확인 · Close'));
-    if (p.canCloseAgreed && !(p.canCloseVerified && !p.isAdmin)) actions.append(h('button', { class: `btn ${p.canCloseVerified ? 'btn-secondary' : 'btn-success'}`, onClick: openCloseAgreed }, p.isAdmin ? '합의 Close' : 'Close'));
-    if (p.canCancel) actions.append(h('button', { class: 'btn btn-danger-outline', onClick: openCancel }, 'Cancel'));
-    if (!actions.childElementCount) actions.append(h('div', { class: 'note' }, st === 'CLOSED' ? '종료된 Issue입니다.' : st === 'CANCEL' ? `취소된 Issue입니다. ${issue.cancelReason ? `사유: ${issue.cancelReason}` : ''}` : issue.assignee ? '현재 수행 가능한 Action이 없습니다. 조치자 또는 Quality Admin이 진행합니다.' : '조치자가 지정되지 않았습니다. [내가 조치]로 배정받거나 Quality Admin이 배정합니다.'));
-    const actionCard = card('Action', actions);
+    /* ---------- 활동(Timeline + Comment 통합) ---------- */
+    const activity = buildActivity(issue, p);
 
-    /* ---------- Timeline ---------- */
-    const timeline = card('Timeline', buildTimeline(issue, p), { headRight: h('span', { class: 'small muted' }, 'System Event + Comment 시간순') });
+    /* ---------- 우측: 다음 작업 / 조치·배정 / Traceability ---------- */
+    const na = nextAction(issue, p);
+    const nextActionBody = h('div', { class: 'next-action' });
+    if (na.primary) nextActionBody.append(h('button', { class: `btn ${na.primary.variant} btn-block`, onClick: na.primary.onClick }, na.primary.label));
+    if (na.secondary.length) nextActionBody.append(h('div', { class: 'next-action-sub' }, ...na.secondary.map((s) => h('button', { class: `btn ${s.variant} btn-sm`, onClick: s.onClick }, s.label))));
+    if (na.note) nextActionBody.append(h('div', { class: 'next-action-note' }, na.note));
+    if (!na.primary && !na.secondary.length && !na.note) nextActionBody.append(h('div', { class: 'next-action-note' }, '현재 수행 가능한 작업이 없습니다.'));
 
-    /* ---------- Composer ---------- */
-    const composer = buildComposer(issue, p);
-
-    /* ---------- Side: 조치/Traceability ---------- */
     const sideKv = h(
       'div',
       { class: 'side-kv' },
@@ -154,29 +184,38 @@ export async function renderDetail(main, { params, navigate }) {
       h('div', { class: 'row' }, h('span', { class: 'k' }, 'Priority'), h('span', { class: 'v' }, priorityBadge(issue.priority), p.canChangePriority ? h('button', { class: 'btn btn-ghost btn-xs', onClick: openPriority }, '변경') : null)),
       h('div', { class: 'row' }, h('span', { class: 'k' }, '상태'), h('span', { class: 'v' }, statusBadge(issue.status)))
     );
+
     const r = issue.resolution;
     const d = issue.deployment || {};
+    const hasTrace = !!((r && (r.description || r.targetVersion)) || (op.enableDeployment && d.status === 'DEPLOYED') || (issue.close && issue.close.type));
     const traceRow = (k, v, mono) => h('div', {}, h('div', { class: 'k' }, k), h('div', { class: `v${v ? '' : ' empty'}${mono && v ? ' mono' : ''}` }, v || '-'));
-    const trace = h(
-      'div',
-      { class: 'trace' },
-      h('div', { style: { gridColumn: '1 / -1' } }, h('div', { class: 'k' }, '조치 결과'), h('div', { class: `v pre${r && r.description ? '' : ' empty'}` }, (r && r.description) || '-')),
-      op.enableChangeReference ? traceRow('Change Reference', r && r.changeReference, true) : null,
-      traceRow('반영 예정 버전', r && r.targetVersion),
-      traceRow('최초 조치완료', r && r.firstResolvedAt ? fmtDateTime(r.firstResolvedAt) : null),
-      traceRow('최근 조치완료', r && r.resolvedAt ? fmtDateTime(r.resolvedAt) : null),
-      op.enableDeployment ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, '배포'), h('div', { class: 'v' }, deployBadge(d.status || 'NOT_DEPLOYED'), d.status === 'DEPLOYED' ? h('span', { style: { marginLeft: '8px' } }, `${d.environmentNameSnapshot || ''} ${d.version || ''} · ${fmtDateTime(d.deployedAt)}`) : null)) : null,
-      issue.close && issue.close.type ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, `Close (${CLOSE_LABEL[issue.close.type] || issue.close.type})`), h('div', { class: 'v pre' }, issue.close.comment || '-'), h('div', { class: 'small muted' }, `최초 ${fmtDateTime(issue.close.firstClosedAt)} · 최근 ${fmtDateTime(issue.close.closedAt)}`)) : null
-    );
+    const traceBody = hasTrace
+      ? h(
+          'div',
+          { class: 'trace' },
+          h('div', { style: { gridColumn: '1 / -1' } }, h('div', { class: 'k' }, '조치 결과'), h('div', { class: `v pre${r && r.description ? '' : ' empty'}` }, (r && r.description) || '-')),
+          op.enableChangeReference ? traceRow('Change Reference', r && r.changeReference, true) : null,
+          traceRow('반영 예정 버전', r && r.targetVersion),
+          traceRow('최초 조치완료', r && r.firstResolvedAt ? fmtDateTime(r.firstResolvedAt) : null),
+          traceRow('최근 조치완료', r && r.resolvedAt ? fmtDateTime(r.resolvedAt) : null),
+          op.enableDeployment ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, '배포'), h('div', { class: 'v' }, deployBadge(d.status || 'NOT_DEPLOYED'), d.status === 'DEPLOYED' ? h('span', { style: { marginLeft: '8px' } }, `${d.environmentNameSnapshot || ''} ${d.version || ''} · ${fmtDateTime(d.deployedAt)}`) : null)) : null,
+          issue.close && issue.close.type ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, `Close (${CLOSE_LABEL[issue.close.type] || issue.close.type})`), h('div', { class: 'v pre' }, issue.close.comment || '-'), h('div', { class: 'small muted' }, `최초 ${fmtDateTime(issue.close.firstClosedAt)} · 최근 ${fmtDateTime(issue.close.closedAt)}`)) : null
+        )
+      : h('div', { class: 'trace-empty' }, '연결된 조치 결과 없음');
 
     root.append(
       h('div', { class: 'flex mb-16', style: { justifyContent: 'space-between' } }, h('a', { class: 'btn btn-ghost btn-sm', href: '#/issues/list' }, '← 목록'), h('span', { class: 'small muted' }, `revision ${issue.revision}`)),
-      h('div', { class: 'detail-grid' }, h('div', { class: 'detail-main' }, summary, content, actionCard, timeline, composer), h('aside', { class: 'detail-side' }, card('조치 / 배정', sideKv), card('조치 결과 · Traceability', trace)))
+      h(
+        'div',
+        { class: 'detail-grid' },
+        h('div', { class: 'detail-main' }, summary, content, activity),
+        h('aside', { class: 'detail-side' }, card('다음 작업', nextActionBody), card('조치 / 배정', sideKv), card('조치 결과 · Traceability', traceBody))
+      )
     );
 
     /* ================= Actions ================= */
     async function doClaim() {
-      const ok = await confirmModal({ title: '내가 조치', message: `${issue.id}의 조치자를 나(${me.name})로 지정합니다.\n배정 후 실제 조치를 시작할 때 [조치 시작]을 선택하세요.`, confirmLabel: '내가 조치' });
+      const ok = await confirmModal({ title: '내게 배정', message: `${issue.id}의 조치자를 나(${me.name})로 지정합니다.\n배정 후 실제 조치를 시작할 때 [조치 시작]을 선택하세요.`, confirmLabel: '내게 배정' });
       if (!ok) return;
       try {
         await run((rev) => api.issues.action(issue.id, 'claim', { expectedRevision: rev }), '조치자로 지정되었습니다.');
@@ -187,7 +226,7 @@ export async function renderDetail(main, { params, navigate }) {
     }
     async function doStart() {
       try {
-        await run((rev) => api.issues.action(issue.id, 'start', { expectedRevision: rev }), '조치를 시작했습니다. (Open → In Progress)');
+        await run((rev) => api.issues.action(issue.id, 'start', { expectedRevision: rev }), '조치를 시작했습니다. (접수 → 조치중)');
       } catch (err) {
         if (!err.isConflict) toast(errorMessage(err), 'error');
       }
@@ -195,14 +234,14 @@ export async function renderDetail(main, { params, navigate }) {
     function openResolve() {
       formModal({
         title: '조치 완료',
-        description: '처리 결과를 남기면 Done(확인대기) 상태가 되며 등록자가 재검증합니다.',
+        description: '처리 결과를 남기면 확인대기 상태가 되며 등록자가 재검증합니다.',
         fields: [
           { name: 'description', label: '처리 결과', type: 'textarea', required: true, placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다.', rows: 4 },
           ...(op.enableChangeReference ? [{ name: 'changeReference', label: 'Change Reference', placeholder: 'Commit / Revision / Change ID', help: `Commit message 권장: [${issue.id}] 수정 내용` }] : []),
           { name: 'targetVersion', label: '반영 예정 버전', placeholder: '예) Release 1.2.3' },
         ],
         submitLabel: '조치 완료',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'resolve', { expectedRevision: rev, resolution: v }), '조치 완료 처리되었습니다. (In Progress → Done)'),
+        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'resolve', { expectedRevision: rev, resolution: v }), '조치 완료 처리되었습니다. (조치중 → 확인대기)'),
       });
     }
     function openDeploy() {
@@ -221,47 +260,47 @@ export async function renderDetail(main, { params, navigate }) {
     function openReopen() {
       formModal({
         title: issue.status === 'CLOSED' ? 'Re-open' : '재조치 요청',
-        description: '사유를 남기면 In Progress 상태로 돌아가 조치자가 재조치합니다.',
+        description: '사유를 남기면 조치중 상태로 돌아가 조치자가 재조치합니다.',
         fields: [{ name: 'reason', label: '재조치 사유', type: 'textarea', required: true, placeholder: '예) 검증계에서 동일 현상이 계속 발생합니다.' }],
         submitLabel: '재조치 요청',
         submitVariant: 'btn-warning',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'reopen', { expectedRevision: rev, reason: v.reason }), '재조치 요청되었습니다. (→ In Progress)'),
+        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'reopen', { expectedRevision: rev, reason: v.reason }), '재조치 요청되었습니다. (→ 조치중)'),
       });
     }
     function openCloseVerified() {
       formModal({
-        title: '정상 확인 · Close',
-        description: '재검증 결과 정상 동작을 확인했습니다. Close Type = VERIFIED',
+        title: '정상 확인',
+        description: '재검증 결과 정상 동작을 확인했습니다.',
         fields: [{ name: 'comment', label: '확인 내용 (선택)', type: 'textarea', placeholder: '예) 검증계에서 정상 동작 확인' }],
-        submitLabel: '정상 확인 · Close',
+        submitLabel: '정상 확인',
         submitVariant: 'btn-success',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'VERIFIED', comment: v.comment }), 'Close 되었습니다. (VERIFIED)'),
+        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'VERIFIED', comment: v.comment }), 'Close 되었습니다. (정상 확인)'),
       });
     }
     function openCloseAgreed() {
       formModal({
         title: '결함을 종료하시겠습니까?',
-        description: '가능하면 고객/등록자가 직접 확인 후 종료하는 것을 권장합니다.\n조치자가 종료하는 경우 확인/합의 내용을 남겨주세요. Close Type = AGREED',
+        description: '가능하면 고객/등록자가 직접 확인 후 종료하는 것을 권장합니다.\n조치자가 종료하는 경우 확인/합의 내용을 남겨주세요.',
         fields: [{ name: 'comment', label: '확인/합의 내용', type: 'textarea', required: true, placeholder: '예) 김OO 책임과 검증계 정상동작을 확인하였으며 해당 결함을 종료하기로 협의함.', rows: 4 }],
         submitLabel: 'Close',
         submitVariant: 'btn-success',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'AGREED', comment: v.comment }), 'Close 되었습니다. (AGREED)'),
+        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'AGREED', comment: v.comment }), 'Close 되었습니다. (합의 종료)'),
       });
     }
     function openCancel() {
       formModal({
-        title: 'Issue Cancel',
-        description: 'Cancel된 Issue는 통계에서 제외되며 Kanban 기본 화면에 표시되지 않습니다. 이력은 보존됩니다.',
-        fields: [{ name: 'reason', label: 'Cancel 사유', type: 'textarea', required: true, placeholder: '예) 중복 결함 DEF-0019로 관리' }],
-        submitLabel: 'Cancel',
+        title: 'Issue 취소',
+        description: '취소된 Issue는 통계에서 제외되며 Kanban 기본 화면에 표시되지 않습니다. 이력은 보존됩니다.',
+        fields: [{ name: 'reason', label: '취소 사유', type: 'textarea', required: true, placeholder: '예) 중복 결함 DEF-0019로 관리' }],
+        submitLabel: '취소',
         submitVariant: 'btn-danger',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: v.reason }), 'Cancel 처리되었습니다.'),
+        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: v.reason }), '취소 처리되었습니다.'),
       });
     }
     function openAdminOverride() {
       formModal({
         title: '관리자 상태 강제 변경',
-        description: 'Quality Admin 전용. 일반 Workflow와 별도로 ADMIN_STATUS_OVERRIDE 이력이 남습니다. 사유는 필수입니다.',
+        description: 'Quality Admin 전용. 일반 Workflow와 별도로 이력이 남습니다. 사유는 필수입니다.',
         fields: [
           { name: 'status', label: '변경할 상태', type: 'select', required: true, options: Object.entries(STATUS_LABEL).filter(([c]) => c !== issue.status).map(([value, label]) => ({ value, label: `${STATUS_KO[value]} · ${label}` })) },
           { name: 'reason', label: '변경 사유', type: 'textarea', required: true, placeholder: '예) 고객 재검증 결과 동일 현상 발생' },
@@ -324,7 +363,7 @@ export async function renderDetail(main, { params, navigate }) {
             ];
       formModal({
         title: '등록내용 수정',
-        description: '변경 전/후 내용은 Timeline에 기록됩니다.',
+        description: '변경 전/후 내용은 활동 이력에 기록됩니다.',
         wide: true,
         fields,
         submitLabel: '저장',
@@ -348,52 +387,85 @@ export async function renderDetail(main, { params, navigate }) {
         },
       });
     }
+
+    function buildMoreMenu(issue, p) {
+      if (!p.canAdminOverride) return null;
+      const pop = h('div', { class: 'more-pop hidden' }, h('button', { class: 'more-item', onClick: () => { pop.classList.add('hidden'); openAdminOverride(); } }, '관리자: 상태 강제 변경'));
+      const btn = h('button', { class: 'btn btn-ghost btn-sm', title: '더보기', 'aria-label': '관리자 기능 더보기', onClick: (e) => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, icon('more', { size: 15 }));
+      const wrap = h('div', { class: 'more-menu' }, btn, pop);
+      document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) pop.classList.add('hidden'); }, { once: false });
+      return wrap;
+    }
   }
 
   /* ================= Sub-builders ================= */
-  function attachmentList(issue, p) {
+  function attachmentZone(issue, p) {
     const atts = (issue.attachments || []).filter((a) => !a.deleted);
-    const wrap = h('div', {});
-    const list = h('div', { class: 'attachment-list' });
-    for (const a of atts) {
-      const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
-      const isImg = /^image\//.test(a.mimeType);
-      const el = h('span', { class: 'att' }, h('a', { class: 'name', href: url, title: a.originalName }, '📎 ', a.originalName), h('span', { class: 'size' }, fmtBytes(a.size)), isImg ? h('button', { class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null);
-      if (p.isAdmin || a.uploadedBy === store.user.userId) {
-        el.append(h('button', { class: 'del', title: '삭제', 'aria-label': `${a.originalName} 삭제`, onClick: async () => {
-          if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
-          try {
-            await run((rev) => api.issues.deleteAttachment(issue.id, a.attachmentId, rev), '첨부가 삭제되었습니다.');
-          } catch (err) {
-            if (!err.isConflict) toast(errorMessage(err), 'error');
-          }
-        } }, '✕'));
+    const wrap = h('div', { class: 'dropzone' });
+    const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
+    const op = store.operation || {};
+
+    async function doUpload(files) {
+      if (!files.length) return;
+      const fd = new FormData();
+      for (const f of files) fd.append('file', f, f.name);
+      fd.append('expectedRevision', String(data.issue.revision));
+      try {
+        await run(async () => {
+          const res = await api.issues.upload(issue.id, fd);
+          if (res.rejected && res.rejected.length) toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
+        }, '첨부가 추가되었습니다.');
+      } catch (err) {
+        if (!err.isConflict) toast(errorMessage(err), 'error');
       }
-      list.append(el);
     }
-    if (!atts.length) list.append(h('span', { class: 'muted small' }, '첨부파일 없음'));
-    wrap.append(list);
+    input.addEventListener('change', () => doUpload([...input.files]));
+
     if (p.canAttach) {
-      const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
-      const btn = h('button', { class: 'btn btn-secondary btn-xs mt-8', onClick: () => input.click() }, '+ 파일 추가');
-      input.addEventListener('change', async () => {
-        if (!input.files.length) return;
-        const fd = new FormData();
-        for (const f of input.files) fd.append('file', f, f.name);
-        fd.append('expectedRevision', String(data.issue.revision));
-        setBusy(btn, true, '+ 파일 추가');
-        try {
-          await run(async () => {
-            const res = await api.issues.upload(issue.id, fd);
-            if (res.rejected && res.rejected.length) toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
-          }, '첨부가 추가되었습니다.');
-        } catch (err) {
-          if (!err.isConflict) toast(errorMessage(err), 'error');
-        } finally {
-          setBusy(btn, false, '+ 파일 추가');
-        }
-      });
-      wrap.append(btn, input);
+      const drop = h(
+        'div',
+        { class: 'dropzone-area', onClick: () => input.click(), onDragover: (e) => { e.preventDefault(); drop.classList.add('drag'); }, onDragleave: () => drop.classList.remove('drag'), onDrop: (e) => { e.preventDefault(); drop.classList.remove('drag'); doUpload([...e.dataTransfer.files]); } },
+        icon('paperclip', { size: 18, cls: 'dz-ico' }),
+        h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
+        h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
+      );
+      wrap.append(drop, input);
+    }
+
+    if (atts.length) {
+      const list = h('div', { class: 'att-table' });
+      for (const a of atts) {
+        const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
+        const isImg = /^image\//.test(a.mimeType);
+        const row = h(
+          'div',
+          { class: 'att-row' },
+          h('a', { class: 'att-name', href: url, title: a.originalName }, icon('paperclip', { size: 13 }), a.originalName),
+          h('span', { class: 'att-meta' }, fmtBytes(a.size)),
+          h('span', { class: 'att-meta' }, a.uploadedByName || '-'),
+          h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
+          h(
+            'span',
+            { class: 'att-actions' },
+            isImg ? h('button', { class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
+            h('a', { class: 'btn btn-ghost btn-xs', href: url, target: '_blank', rel: 'noopener' }, '다운로드'),
+            p.isAdmin || a.uploadedBy === store.user.userId
+              ? h('button', { class: 'btn btn-ghost btn-xs', onClick: async () => {
+                  if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
+                  try {
+                    await run((rev) => api.issues.deleteAttachment(issue.id, a.attachmentId, rev), '첨부가 삭제되었습니다.');
+                  } catch (err) {
+                    if (!err.isConflict) toast(errorMessage(err), 'error');
+                  }
+                } }, '삭제')
+              : null
+          )
+        );
+        list.append(row);
+      }
+      wrap.append(list);
+    } else if (!p.canAttach) {
+      wrap.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
     }
     return wrap;
   }
@@ -402,7 +474,8 @@ export async function renderDetail(main, { params, navigate }) {
     openModal({ title: name, wide: true, body: h('img', { src: `${url}?inline=1`, alt: name, class: 'att-preview', style: { maxHeight: '70vh', margin: '0 auto' } }), actions: [{ label: '다운로드', variant: 'btn-secondary', onClick: () => window.open(url, '_blank') }, { label: '닫기', variant: 'btn-primary', onClick: (c) => c() }] });
   }
 
-  function buildTimeline(issue, p) {
+  /** Timeline(system) + Comment를 하나의 활동 목록으로 병합해 시간순 정렬 */
+  function collectActivity(issue) {
     const items = [];
     let seq = 0;
     for (const ev of issue.history || []) {
@@ -411,65 +484,96 @@ export async function renderDetail(main, { params, navigate }) {
         if (c) items.push({ kind: 'comment', at: c.createdAt, c, seq: seq++ });
       } else items.push({ kind: 'event', at: ev.timestamp, ev, seq: seq++ });
     }
-    // COMMENTED 이벤트가 없는 Comment(호환) 보완
     for (const c of issue.comments || []) if (!items.some((i) => i.kind === 'comment' && i.c.commentId === c.commentId)) items.push({ kind: 'comment', at: c.createdAt, c, seq: seq++ });
     items.sort((a, b) => a.at.localeCompare(b.at) || a.seq - b.seq);
-    const tl = h('div', { class: 'timeline' });
-    if (!items.length) tl.append(h('div', { class: 'muted' }, '이력이 없습니다.'));
+    return items.reverse(); // 최신순
+  }
+
+  function activityItemEl(issue, p, it) {
     const attMap = new Map((issue.attachments || []).map((a) => [a.attachmentId, a]));
-    for (const it of items) {
-      if (it.kind === 'comment') {
-        const c = it.c;
-        const body = c.hidden ? h('div', { class: 'tl-comment hidden-c' }, p.isAdmin ? `[숨김 처리됨 · ${c.hiddenReason || ''}] ${c.body || ''}` : '관리자에 의해 숨김 처리된 Comment입니다.') : h('div', { class: 'tl-comment' }, c.body);
-        const atts = (c.attachments || []).map((id) => attMap.get(id)).filter(Boolean);
-        tl.append(
-          h(
-            'div',
-            { class: 'tl-item' },
-            h('div', { class: 'tl-dot blue' }, '💬'),
-            h(
-              'div',
-              {},
-              h('div', { class: 'tl-head' }, h('span', { class: 'who' }, c.author.nameSnapshot), h('span', { class: 'team' }, c.author.teamSnapshot), h('span', { class: 'time' }, fmtDateTime(c.createdAt))),
-              body,
-              atts.length ? h('div', { class: 'attachment-list mt-8' }, ...atts.map((a) => h('a', { class: 'att', href: `/api/issues/${issue.id}/attachments/${a.attachmentId}` }, '📎 ', h('span', { class: 'name' }, a.originalName)))) : null,
-              p.canHideComment && !c.hidden ? h('button', { class: 'btn btn-ghost btn-xs mt-8', onClick: () => hideComment(c) }, '숨김') : null
-            )
-          )
-        );
-        continue;
-      }
-      const ev = it.ev;
-      const t = ev.eventType;
-      const dot = { CREATED: ['', '●'], UPDATED: ['', '✎'], ASSIGNED: ['blue', '👤'], PRIORITY_CHANGED: ['blue', '!'], STATUS_CHANGED: ['blue', '→'], RESOLVED: ['purple', '✔'], DEPLOYED: ['cyan', '⇪'], REOPENED: ['warn', '↺'], CANCELLED: ['danger', '✕'], CLOSED: ['green', '✓'], ADMIN_STATUS_OVERRIDE: ['admin', 'A'], COMMENT_HIDDEN: ['admin', '⊘'], ATTACHMENT_ADDED: ['', '📎'], ATTACHMENT_DELETED: ['', '📎'] }[t] || ['', '•'];
-      const byAdmin = ev.data && ev.data.byAdmin;
-      const rows = [];
-      let label = EVENT_LABEL[t] || t;
-      if (t === 'CLOSED' && ev.data && ev.data.closeType) label = `Close · ${CLOSE_LABEL[ev.data.closeType] || ev.data.closeType}`;
-      if (t === 'ASSIGNED' && ev.data && ev.data.mode === 'CLAIM') label = '조치자 지정 (내가 조치)';
-      if (t === 'STATUS_CHANGED' && ev.data && ev.data.action === 'START') label = '조치 시작';
-      if (ev.before && ev.after) {
-        for (const k of Object.keys(ev.after)) {
-          if (k === 'deployment') continue;
-          if (['status', 'priority', 'assignee'].includes(k)) rows.push(h('div', { class: 'tl-change' }, fieldValueText(k, ev.before[k]), h('span', { class: 'arrow' }, '→'), h('strong', {}, fieldValueText(k, ev.after[k]))));
-          else rows.push(h('details', { class: 'tl-diff' }, h('summary', {}, `${FIELD_LABEL[k] || k} 변경 · 변경내용 보기`), h('div', { class: 'pair' }, h('div', {}, h('div', { class: 'h' }, 'BEFORE'), fieldValueText(k, ev.before[k])), h('div', {}, h('div', { class: 'h' }, 'AFTER'), fieldValueText(k, ev.after[k])))));
-        }
-      }
-      if (t === 'DEPLOYED' && ev.data) rows.push(h('div', { class: 'tl-change' }, `${ev.data.environment || ''} 배포 · ${ev.data.version || '버전 미기재'} · ${fmtDateTime(ev.data.deployedAt)}`));
-      if (t === 'RESOLVED' && ev.data && (ev.data.changeReference || ev.data.targetVersion)) rows.push(h('div', { class: 'tl-change' }, ev.data.changeReference ? h('span', { class: 'mono' }, `Change ${ev.data.changeReference}`) : null, ev.data.targetVersion ? ` · ${ev.data.targetVersion}` : null));
-      if (t === 'ATTACHMENT_ADDED' && ev.data) rows.push(h('div', { class: 'tl-change' }, (ev.data.files || []).map((f) => f.name).join(', ')));
-      if (t === 'ATTACHMENT_DELETED' && ev.data) rows.push(h('div', { class: 'tl-change' }, ev.data.name));
-      if (ev.comment) rows.push(h('div', { class: ['REOPENED', 'CANCELLED', 'ADMIN_STATUS_OVERRIDE', 'COMMENT_HIDDEN'].includes(t) ? 'tl-reason' : 'tl-comment' }, ev.comment));
-      tl.append(
+    if (it.kind === 'comment') {
+      const c = it.c;
+      const body = c.hidden ? h('div', { class: 'tl-comment hidden-c' }, p.isAdmin ? `[숨김 처리됨 · ${c.hiddenReason || ''}] ${c.body || ''}` : '관리자에 의해 숨김 처리된 Comment입니다.') : h('div', { class: 'tl-comment' }, c.body);
+      const atts = (c.attachments || []).map((id) => attMap.get(id)).filter(Boolean);
+      return h(
+        'div',
+        { class: 'tl-item' },
+        h('div', { class: 'tl-dot blue' }, icon('comment', { size: 13 })),
         h(
           'div',
-          { class: 'tl-item' },
-          h('div', { class: `tl-dot ${dot[0]}` }, dot[1]),
-          h('div', {}, h('div', { class: 'tl-head' }, h('span', { class: 'who' }, ev.actor.nameSnapshot), h('span', { class: 'team' }, ev.actor.teamSnapshot), byAdmin || t === 'ADMIN_STATUS_OVERRIDE' ? h('span', { class: 'badge admin' }, 'Quality Admin') : null, h('span', { class: 'time' }, fmtDateTime(ev.timestamp))), h('div', { class: 'tl-label' }, label), ...rows)
+          {},
+          h('div', { class: 'tl-head' }, h('span', { class: 'who' }, c.author.nameSnapshot), h('span', { class: 'team' }, c.author.teamSnapshot), h('span', { class: 'time' }, fmtDateTime(c.createdAt))),
+          body,
+          atts.length ? h('div', { class: 'attachment-list mt-8' }, ...atts.map((a) => h('a', { class: 'att', href: `/api/issues/${issue.id}/attachments/${a.attachmentId}` }, icon('paperclip', { size: 12 }), h('span', { class: 'name' }, a.originalName)))) : null,
+          p.canHideComment && !c.hidden ? h('button', { class: 'btn btn-ghost btn-xs mt-8', onClick: () => hideComment(c) }, '숨김') : null
         )
       );
     }
-    return tl;
+    const ev = it.ev;
+    const t = ev.eventType;
+    const dot = { CREATED: ['', 'dot'], UPDATED: ['', 'pencil'], ASSIGNED: ['blue', 'user'], PRIORITY_CHANGED: ['blue', 'warn'], STATUS_CHANGED: ['blue', 'chevronRight'], RESOLVED: ['purple', 'check'], DEPLOYED: ['cyan', 'upload'], REOPENED: ['warn', 'undo'], CANCELLED: ['danger', 'x'], CLOSED: ['green', 'check'], ADMIN_STATUS_OVERRIDE: ['admin', 'gear'], COMMENT_HIDDEN: ['admin', 'warn'], ATTACHMENT_ADDED: ['', 'paperclip'], ATTACHMENT_DELETED: ['', 'paperclip'] }[t] || ['', 'dot'];
+    const byAdmin = ev.data && ev.data.byAdmin;
+    const rows = [];
+    let label = EVENT_LABEL[t] || t;
+    if (t === 'CLOSED' && ev.data && ev.data.closeType) label = `Close · ${CLOSE_LABEL[ev.data.closeType] || ev.data.closeType}`;
+    if (t === 'ASSIGNED' && ev.data && ev.data.mode === 'CLAIM') label = '조치자 지정 (내게 배정)';
+    if (t === 'STATUS_CHANGED' && ev.data && ev.data.action === 'START') label = '조치 시작';
+    if (ev.before && ev.after) {
+      for (const k of Object.keys(ev.after)) {
+        if (k === 'deployment') continue;
+        if (['status', 'priority', 'assignee'].includes(k)) {
+          const beforeText = ev.before[k] !== undefined ? fieldValueText(k, ev.before[k]) : null;
+          rows.push(h('div', { class: 'tl-change' }, beforeText ? [beforeText, h('span', { class: 'arrow' }, '→')] : '최초 상태: ', h('strong', {}, fieldValueText(k, ev.after[k]))));
+        } else rows.push(h('details', { class: 'tl-diff' }, h('summary', {}, `${FIELD_LABEL[k] || k} 변경 · 변경내용 보기`), h('div', { class: 'pair' }, h('div', {}, h('div', { class: 'h' }, 'BEFORE'), fieldValueText(k, ev.before[k])), h('div', {}, h('div', { class: 'h' }, 'AFTER'), fieldValueText(k, ev.after[k])))));
+      }
+    }
+    if (t === 'DEPLOYED' && ev.data) rows.push(h('div', { class: 'tl-change' }, `${ev.data.environment || ''} 배포 · ${ev.data.version || '버전 미기재'} · ${fmtDateTime(ev.data.deployedAt)}`));
+    if (t === 'RESOLVED' && ev.data && (ev.data.changeReference || ev.data.targetVersion)) rows.push(h('div', { class: 'tl-change' }, ev.data.changeReference ? h('span', { class: 'mono' }, `Change ${ev.data.changeReference}`) : null, ev.data.targetVersion ? ` · ${ev.data.targetVersion}` : null));
+    if (t === 'ATTACHMENT_ADDED' && ev.data) rows.push(h('div', { class: 'tl-change' }, (ev.data.files || []).map((f) => f.name).join(', ')));
+    if (t === 'ATTACHMENT_DELETED' && ev.data) rows.push(h('div', { class: 'tl-change' }, ev.data.name));
+    if (ev.comment) rows.push(h('div', { class: ['REOPENED', 'CANCELLED', 'ADMIN_STATUS_OVERRIDE', 'COMMENT_HIDDEN'].includes(t) ? 'tl-reason' : 'tl-comment' }, ev.comment));
+    return h(
+      'div',
+      { class: 'tl-item' },
+      h('div', { class: `tl-dot ${dot[0]}` }, dot[1] ? icon(dot[1], { size: 13 }) : null),
+      h('div', {}, h('div', { class: 'tl-head' }, h('span', { class: 'who' }, ev.actor.nameSnapshot), h('span', { class: 'team' }, ev.actor.teamSnapshot), byAdmin || t === 'ADMIN_STATUS_OVERRIDE' ? h('span', { class: 'badge admin' }, 'Quality Admin') : null, h('span', { class: 'time' }, fmtDateTime(ev.timestamp))), h('div', { class: 'tl-label' }, label), ...rows)
+    );
+  }
+
+  function buildActivity(issue, p) {
+    const all = collectActivity(issue);
+    const commentCount = all.filter((i) => i.kind === 'comment').length;
+    const systemCount = all.filter((i) => i.kind === 'event').length;
+
+    const tabsRow = h(
+      'div',
+      { class: 'activity-tabs' },
+      h('button', { class: `chip${activityTab === 'all' ? ' active' : ''}`, onClick: () => { activityTab = 'all'; activityExpanded = false; rerender(); } }, `전체 ${all.length}`),
+      h('button', { class: `chip${activityTab === 'comment' ? ' active' : ''}`, onClick: () => { activityTab = 'comment'; activityExpanded = false; rerender(); } }, `댓글 ${commentCount}`),
+      h('button', { class: `chip${activityTab === 'system' ? ' active' : ''}`, onClick: () => { activityTab = 'system'; activityExpanded = false; rerender(); } }, `시스템 이력 ${systemCount}`)
+    );
+
+    const list = h('div', { class: 'timeline' });
+    const composer = buildComposer(issue, p);
+    const body = h('div', {}, tabsRow, composer, list);
+    const moreWrap = h('div', {});
+    const cardEl = card('활동', body);
+
+    function rerender() {
+      const filtered = activityTab === 'all' ? all : activityTab === 'comment' ? all.filter((i) => i.kind === 'comment') : all.filter((i) => i.kind === 'event');
+      clear(list);
+      if (!filtered.length) {
+        list.append(h('div', { class: 'muted small' }, '이력이 없습니다.'));
+      } else {
+        const shown = activityExpanded ? filtered : filtered.slice(0, 3);
+        for (const it of shown) list.append(activityItemEl(issue, p, it));
+      }
+      clear(moreWrap);
+      if (!activityExpanded && filtered.length > 3) moreWrap.append(h('button', { class: 'btn btn-ghost btn-sm mt-8', onClick: () => { activityExpanded = true; rerender(); } }, `전체 보기 (${filtered.length})`));
+      list.append(moreWrap);
+    }
+    rerender();
+    return cardEl;
   }
 
   function hideComment(c) {
@@ -484,7 +588,7 @@ export async function renderDetail(main, { params, navigate }) {
   }
 
   function buildComposer(issue, p) {
-    if (!p.canComment) return card('Comment', h('div', { class: 'muted small' }, '등록자, 조치자, Quality Admin만 Comment를 작성할 수 있습니다.'));
+    if (!p.canComment) return h('div', { class: 'muted small mb-16' }, '등록자, 조치자, Quality Admin만 Comment를 작성할 수 있습니다.');
     const ta = h('textarea', { class: 'input', placeholder: '추가로 확인한 내용이나 조치에 필요한 정보를 남겨주세요.', 'aria-label': 'Comment' });
     const fileInput = h('input', { type: 'file', multiple: true, class: 'hidden' });
     const fileNames = h('span', { class: 'small muted' });
@@ -514,13 +618,12 @@ export async function renderDetail(main, { params, navigate }) {
       } catch (e) {
         err.textContent = e.isConflict ? '다른 사용자가 먼저 수정했습니다. 최신 내용을 불러온 후 다시 등록해주세요. (입력 내용 유지)' : errorMessage(e);
         err.classList.remove('hidden');
-        // 입력값 유지: conflict 시 draw()가 root를 다시 그리므로 textarea 값을 복원
         if (e.isConflict) setTimeout(() => { const t = root.querySelector('.composer textarea'); if (t) t.value = body; }, 0);
       } finally {
         setBusy(btn, false, '등록');
       }
     });
-    return card('Comment', h('div', { class: 'composer' }, ta, err, h('div', { class: 'row' }, h('div', { class: 'flex' }, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => fileInput.click() }, '파일 첨부'), fileInput, fileNames), btn)));
+    return h('div', { class: 'composer mb-16' }, ta, err, h('div', { class: 'row' }, h('div', { class: 'flex' }, h('button', { class: 'btn btn-secondary btn-sm', onClick: () => fileInput.click() }, '파일 첨부'), fileInput, fileNames), btn));
   }
 
   await load();

@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, TYPE_LABEL, STATUS_LABEL } from '../ui.js';
+import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, TYPE_LABEL, STATUS_LABEL, icon } from '../ui.js';
 
 const DRILL_KEYS = {
   unassigned: '담당자 미지정',
@@ -50,6 +50,53 @@ export function buildFilterBar(query, onChange, { compact = false, hideStatus = 
   return bar;
 }
 
+/** 목록 전용: 기본 필터(검색/상태/Priority/담당자/기간)는 항상 노출, 고급 필터(유형/환경/등록일 상세)는 접힘 영역 */
+function buildListFilters(query, go) {
+  const sel = (name, label, options) => {
+    const s = h('select', { class: 'input', 'aria-label': label }, h('option', { value: '' }, label), ...options.map((o) => h('option', { value: o.value }, o.label)));
+    s.value = query[name] || '';
+    if (s.value !== (query[name] || '')) s.value = '';
+    s.addEventListener('change', () => go({ ...query, [name]: s.value, page: undefined }));
+    return s;
+  };
+  const search = h('input', { class: 'input', type: 'search', placeholder: '검색: ID, 제목, 현상, 등록자, Comment', style: { minWidth: '240px' } });
+  search.value = query.q || '';
+  search.addEventListener('keydown', (e) => e.key === 'Enter' && go({ ...query, q: search.value.trim(), page: undefined }));
+
+  const assignee = h('select', { class: 'input', 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), h('option', { value: store.user.userId }, '내가 조치'));
+  assignee.value = query.assignee || '';
+  api.users.list({ active: 'true' }).then(({ users }) => {
+    for (const u of users) if (u.userId !== store.user.userId) assignee.append(h('option', { value: u.userId }, `${u.name} (${u.team})`));
+    assignee.value = query.assignee || '';
+  }).catch(() => {});
+  assignee.addEventListener('change', () => go({ ...query, assignee: assignee.value, page: undefined }));
+
+  const basicRow = h(
+    'div',
+    { class: 'filter-bar', style: { marginBottom: 0 } },
+    search,
+    sel('status', '상태 전체', [...Object.entries(STATUS_LABEL).filter(([value]) => value !== 'DRAFT').map(([value, label]) => ({ value, label })), { value: 'ALL', label: 'Cancel 포함 전체' }]),
+    sel('priority', 'Priority 전체', [...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }]),
+    assignee
+  );
+  const from = h('input', { type: 'date', class: 'input', 'aria-label': '등록일 시작' });
+  const to = h('input', { type: 'date', class: 'input', 'aria-label': '등록일 종료' });
+  from.value = query.createdFrom || '';
+  to.value = query.createdTo || '';
+  from.addEventListener('change', () => go({ ...query, createdFrom: from.value, page: undefined }));
+  to.addEventListener('change', () => go({ ...query, createdTo: to.value, page: undefined }));
+  basicRow.append(h('span', { class: 'muted small' }, '기간'), from, h('span', { class: 'muted' }, '~'), to);
+
+  const advOpen = !!(query.type || query.environmentId);
+  const advToggle = h('button', { type: 'button', class: 'btn btn-ghost btn-sm' }, advOpen ? '고급 필터 숨기기' : '고급 필터');
+  const advRow = h('div', { class: `filter-bar advanced-filters${advOpen ? '' : ' hidden'}` }, sel('type', '유형 전체', Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))), sel('environmentId', '환경 전체', (store.project ? store.project.environments : []).map((e) => ({ value: e.id, label: e.displayName }))));
+  advToggle.addEventListener('click', () => {
+    advRow.classList.toggle('hidden');
+    advToggle.textContent = advRow.classList.contains('hidden') ? '고급 필터' : '고급 필터 숨기기';
+  });
+  return h('div', {}, basicRow, h('div', { class: 'mt-8' }, advToggle), advRow);
+}
+
 export async function renderList(main, { query, navigate }) {
   // 쿼리 없이 진입(사이드바 메뉴 등)하면 이 화면에서 마지막으로 쓰던 필터를 복원한다.
   // Dashboard/Kanban Drill-down처럼 조건을 들고 들어온 경우는 그 조건을 그대로 존중한다.
@@ -63,9 +110,6 @@ export async function renderList(main, { query, navigate }) {
     store.saveFilter('list', q); // 필터 초기화(go({}))를 포함해 항상 이동 직전에 저장해 다음 진입 시 복원 루프를 방지한다.
     navigate('/issues/list', q);
   };
-  const search = h('input', { class: 'input', type: 'search', placeholder: '검색: ID, 제목, 현상, 등록자, Comment', style: { minWidth: '260px' } });
-  search.value = query.q || '';
-  search.addEventListener('keydown', (e) => e.key === 'Enter' && go({ ...query, q: search.value.trim(), page: undefined }));
 
   // Drill-down 조건 표시
   const drills = Object.keys(DRILL_KEYS).filter((k) => query[k] === 'true');
@@ -83,8 +127,8 @@ export async function renderList(main, { query, navigate }) {
 
   const table = h('div', { class: 'card' });
   main.append(
-    pageHead('Issue 목록', '등록된 결함, 개선요청, 문의사항의 처리 상태를 확인합니다.', h('a', { class: 'btn btn-primary', href: '#/new' }, '+ Issue 등록')),
-    h('div', { class: 'filter-bar' }, search, buildFilterBar(query, go)),
+    pageHead('Issue 목록', '등록된 결함, 개선요청, 문의사항의 처리 상태를 확인합니다.', h('a', { class: 'btn btn-secondary', href: '#/new' }, '+ Issue 등록')),
+    buildListFilters(query, go),
     chipsRow,
     table
   );
@@ -128,7 +172,7 @@ export async function renderList(main, { query, navigate }) {
             { class: 'clickable', onClick: () => navigate(`/issues/${it.id}`) },
             h('td', { class: 'id-cell' }, h('a', { href: `#/issues/${it.id}`, onClick: (e) => e.stopPropagation() }, it.id)),
             h('td', {}, typeBadge(it.type)),
-            h('td', { class: 'title-cell', title: it.title }, it.title, it.reopened ? h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Re-open') : null, it.commentCount ? h('span', { class: 'muted small', style: { marginLeft: '6px' } }, `💬${it.commentCount}`) : null),
+            h('td', { class: 'title-cell', title: it.title }, it.title, it.reopened ? h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Re-open') : null, it.commentCount ? h('span', { class: 'muted small flex', style: { marginLeft: '6px', display: 'inline-flex' } }, icon('comment', { size: 11 }), it.commentCount) : null),
             h('td', { class: 'env-cell' }, it.environment || '-'),
             h('td', {}, priorityBadge(it.priority)),
             h('td', {}, statusBadge(it.status)),

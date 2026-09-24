@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa, errorBox, loadingState } from '../ui.js';
+import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa, errorBox, loadingState, icon } from '../ui.js';
 
 function field({ label, required, help, input, q }) {
   return h('div', { class: 'field' }, h('label', { class: q ? 'q' : '', for: input.id }, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null, h('div', { class: 'error-msg hidden' }));
@@ -27,8 +27,6 @@ function fileInput(files) {
   const list = h('div', { class: 'file-list' });
   const input = h('input', { type: 'file', multiple: true, class: 'hidden', id: 'attachments' });
   const op = store.operation || {};
-  const help = h('div', { class: 'help' }, `허용: ${(op.allowedExtensions || []).join(', ')} · 최대 ${op.maxAttachmentMb || 20}MB`);
-  const btn = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => input.click() }, '+ 파일 추가');
   const renderList = () => {
     clear(list);
     files.forEach((f, i) => list.append(h('div', { class: 'file-row' }, h('span', { class: 'name' }, f.name), h('span', { class: 'muted small' }, fmtBytes(f.size)), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onClick: () => { files.splice(i, 1); renderList(); } }, '삭제'))));
@@ -38,7 +36,14 @@ function fileInput(files) {
     input.value = '';
     renderList();
   });
-  return h('div', {}, btn, input, help, list);
+  const drop = h(
+    'div',
+    { class: 'dropzone-area', onClick: () => input.click(), onDragover: (e) => { e.preventDefault(); drop.classList.add('drag'); }, onDragleave: () => drop.classList.remove('drag'), onDrop: (e) => { e.preventDefault(); drop.classList.remove('drag'); for (const f of e.dataTransfer.files) files.push(f); renderList(); } },
+    icon('paperclip', { size: 18, cls: 'dz-ico' }),
+    h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
+    h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
+  );
+  return h('div', { class: 'dropzone' }, drop, input, list);
 }
 
 async function uploadFiles(issueId, files) {
@@ -81,13 +86,34 @@ export async function renderCreate(main, { params, query, navigate }) {
   }
   if (!type) {
     main.append(
-      pageHead('Issue 등록', '무엇을 등록하시겠어요?'),
+      pageHead('Issue 유형 선택', '등록할 Issue의 유형을 선택하세요.'),
       h(
         'div',
         { class: 'type-cards' },
-        h('button', { class: 'type-card', onClick: () => navigate('/new/defect') }, h('div', { class: 'ico' }, '🐞'), h('h3', {}, '결함'), h('p', {}, '오류가 발생했어요')),
-        h('button', { class: 'type-card', onClick: () => navigate('/new/improvement') }, h('div', { class: 'ico' }, '💡'), h('h3', {}, '개선요청'), h('p', {}, '더 좋게 개선하고 싶어요')),
-        h('button', { class: 'type-card', onClick: () => navigate('/new/inquiry') }, h('div', { class: 'ico' }, '❓'), h('h3', {}, '문의'), h('p', {}, '확인이 필요한 내용이 있어요'))
+        h(
+          'button',
+          { class: 'type-card', onClick: () => navigate('/new/defect') },
+          h('div', { class: 'ico' }, icon('bug', { size: 18 })),
+          h('h3', {}, '결함'),
+          h('p', {}, '시스템/업무 오류 등록'),
+          h('p', { class: 'ex' }, '예) 조회 버튼 클릭 시 오류 발생')
+        ),
+        h(
+          'button',
+          { class: 'type-card', onClick: () => navigate('/new/improvement') },
+          h('div', { class: 'ico' }, icon('bulb', { size: 18 })),
+          h('h3', {}, '개선요청'),
+          h('p', {}, '개선 요청 등록'),
+          h('p', { class: 'ex' }, '예) 필터를 상단에 노출해주세요')
+        ),
+        h(
+          'button',
+          { class: 'type-card', onClick: () => navigate('/new/inquiry') },
+          h('div', { class: 'ico' }, icon('question', { size: 18 })),
+          h('h3', {}, '문의'),
+          h('p', {}, '문의 등록'),
+          h('p', { class: 'ex' }, '예) 처리 기준이 궁금합니다')
+        )
       )
     );
     return;
@@ -183,17 +209,15 @@ function renderDefectForm(main, navigate, draft) {
     for (const s of draft.reproductionSteps) addStep(s.text);
   } else {
     addStep();
-    addStep();
-    addStep();
   }
 
   const wraps = {
-    location: field({ label: '1. 어디에서 발생했나요?', required: true, input: location, q: true, help: '화면/메뉴/기능 위치' }),
+    location: field({ label: '발생 위치', required: true, input: location, help: '화면/메뉴/기능 위치' }),
     environmentId: field({ label: '발생 환경', required: true, input: env }),
-    symptom: field({ label: '2. 어떤 문제가 발생했나요?', required: true, input: symptom, q: true }),
-    reproductionSteps: h('div', { class: 'field' }, h('label', { class: 'q' }, '3. 어떻게 하면 다시 발생하나요?', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수'), h('div', { class: 'error-msg hidden' })),
-    expectedResult: field({ label: '4. 정상이라면 어떻게 되어야 하나요?', required: true, input: expected, q: true }),
-    attachments: h('div', { class: 'field' }, h('label', { class: 'q' }, '5. 화면 캡처 / 증적'), fileInput(files)),
+    symptom: field({ label: '발생 현상', required: true, input: symptom, help: '어떤 문제가 발생했는지 적어주세요.' }),
+    reproductionSteps: h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수'), h('div', { class: 'error-msg hidden' })),
+    expectedResult: field({ label: '기대 결과', required: true, input: expected, help: '정상이라면 어떻게 동작해야 하는지 적어주세요.' }),
+    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), fileInput(files)),
   };
   const submitLabel = draft ? '등록 완료' : '결함 등록';
   const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, submitLabel);
@@ -294,10 +318,10 @@ function renderSimpleForm(main, navigate, type, draft) {
     if (reason) reason.value = draft.reason || '';
   }
   const wraps = {
-    target: field({ label: isImp ? '개선 대상' : '문의 대상', required: true, input: target, q: true }),
-    body: field({ label: isImp ? '어떻게 개선했으면 좋겠나요?' : '문의 내용', required: true, input: body, q: true }),
-    reason: reason ? field({ label: '왜 개선이 필요한가요?', input: reason, q: true }) : null,
-    attachments: h('div', { class: 'field' }, h('label', { class: 'q' }, '참고자료'), fileInput(files)),
+    target: field({ label: isImp ? '개선 대상' : '문의 대상', required: true, input: target }),
+    body: field({ label: isImp ? '개선 내용' : '문의 내용', required: true, input: body }),
+    reason: reason ? field({ label: '개선 필요 사유', input: reason }) : null,
+    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), fileInput(files)),
   };
   const label = isImp ? '개선요청 등록' : '문의 등록';
   const submitLabel = draft ? '등록 완료' : label;

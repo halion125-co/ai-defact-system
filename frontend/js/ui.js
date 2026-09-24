@@ -69,8 +69,66 @@ export function svg(tag, attrs = {}, ...children) {
 export const STATUS_LABEL = { DRAFT: 'Draft', OPEN: 'Open', IN_PROGRESS: 'In Progress', DONE: 'Done', CLOSED: 'Closed', CANCEL: 'Cancel' };
 export const STATUS_KO = { DRAFT: '임시저장', OPEN: '접수', IN_PROGRESS: '조치중', DONE: '확인대기', CLOSED: '완료', CANCEL: '취소' };
 export const TYPE_LABEL = { DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' };
-export const TYPE_ICON = { DEFECT: '🐞', IMPROVEMENT: '💡', INQUIRY: '❓' };
 export const CLOSE_LABEL = { VERIFIED: '정상 확인', AGREED: '합의 종료' };
+
+/* ---------- Icons (일관된 인라인 SVG 세트, 이모지 대체) ---------- */
+const ICON_PATHS = {
+  // 결함(bug)
+  bug: 'M9 3v2M15 3v2M6 8h12M7 5.5A5 5 0 0117 5.5M4.5 12H7M17 12h2.5M5 16.5l2-1.2M19 16.5l-2-1.2M8 8v8a4 4 0 008 0V8a4 4 0 00-8 0z',
+  // 개선요청(lightbulb)
+  bulb: 'M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.8 1 .8 1.6v.5h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0012 3z',
+  // 문의(question)
+  question: 'M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5M12 17h.01M12 21a9 9 0 100-18 9 9 0 000 18z',
+  // 검색
+  search: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35',
+  // 사용자
+  user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 3.6-7 8-7s8 3 8 7',
+  // 잠금
+  lock: 'M6 11V8a6 6 0 1112 0v3M5 11h14v9a1 1 0 01-1 1H6a1 1 0 01-1-1v-9z',
+  // 첨부(clip)
+  paperclip: 'M21 12.5l-8.5 8.5a4.5 4.5 0 01-6.4-6.4L14.6 6a3 3 0 014.3 4.2L10.4 18.7a1.5 1.5 0 01-2.1-2.1L16 9',
+  // 댓글
+  comment: 'M21 11.5a8.38 8.38 0 01-4 7.1L4 21l1.5-4.5a8.38 8.38 0 01.5-3A8.5 8.5 0 1121 11.5z',
+  // 경고
+  warn: 'M12 9v4M12 17h.01M10.3 3.9L2.7 17a1.5 1.5 0 001.3 2.2h16a1.5 1.5 0 001.3-2.2L13.7 3.9a1.5 1.5 0 00-2.6 0z',
+  // Dashboard(grid)
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  // Issue 관리(list/board)
+  board: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v14a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM9 4v16M15 4v16',
+  // MY(user circle)
+  userCircle: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 3.6-7 8-7s8 3 8 7M12 21a9 9 0 100-18 9 9 0 000 18z',
+  // 설정(gear)
+  gear: 'M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09a1.7 1.7 0 001.55-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z',
+  // 등록(plus)
+  plus: 'M12 5v14M5 12h14',
+  // 더보기(kebab)
+  more: 'M12 6h.01M12 12h.01M12 18h.01',
+  // 화살표(우측)
+  chevronRight: 'M9 6l6 6-6 6',
+  // Timeline: 등록(dot)
+  dot: 'M12 12m-3 0a3 3 0 106 0 3 3 0 10-6 0',
+  // Timeline: 수정(pencil)
+  pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z',
+  // Timeline: 완료/체크
+  check: 'M20 6L9 17l-5-5',
+  // Timeline: 배포(upload)
+  upload: 'M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3',
+  // Timeline: 재조치(되돌리기)
+  undo: 'M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8M3 3v5h5',
+  // Timeline: 취소(x)
+  x: 'M18 6L6 18M6 6l12 12',
+};
+/** 이모지 대체용 인라인 SVG 아이콘. 항상 line-icon 규격(1.6~1.8 stroke)로 통일. */
+export function icon(name, { size = 14, cls = '' } = {}) {
+  const d = ICON_PATHS[name];
+  if (!d) return h('span', {});
+  return svg(
+    'svg',
+    { class: `ico-svg ${cls}`.trim(), width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' },
+    svg('path', { d })
+  );
+}
+export const TYPE_ICON_NAME = { DEFECT: 'bug', IMPROVEMENT: 'bulb', INQUIRY: 'question' };
 export const EVENT_LABEL = {
   CREATED: 'Issue 등록',
   UPDATED: '등록내용 수정',
@@ -93,7 +151,7 @@ export const EVENT_LABEL = {
 export const statusBadge = (s, lg) =>
   h('span', { class: `badge status-${s}${lg ? ' badge-lg' : ''}` }, STATUS_KO[s] || s, h('span', { class: 'badge-en' }, STATUS_LABEL[s] || ''));
 export const priorityBadge = (p, lg) => h('span', { class: `badge prio-${p || 'UNASSIGNED'}${lg ? ' badge-lg' : ''}` }, store.priorityName(p));
-export const typeBadge = (t, lg) => h('span', { class: `badge type-${t}${lg ? ' badge-lg' : ''}` }, `${TYPE_ICON[t] || ''} ${TYPE_LABEL[t] || t}`);
+export const typeBadge = (t, lg) => h('span', { class: `badge type-${t}${lg ? ' badge-lg' : ''}` }, icon(TYPE_ICON_NAME[t], { size: 12 }), TYPE_LABEL[t] || t);
 export const deployBadge = (d) => h('span', { class: `badge deploy-${d}` }, d === 'DEPLOYED' ? '배포완료' : '미배포');
 
 /* ---------- Format ----------

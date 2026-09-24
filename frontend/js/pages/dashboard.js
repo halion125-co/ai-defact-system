@@ -53,8 +53,8 @@ export async function renderDashboard(main, { query, navigate }) {
     sel('priority', [{ value: '', label: 'Priority 전체' }, ...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }], filter.priority)
   );
   const typeLabel = type === 'ALL' ? 'Issue(전체 유형)' : TYPE_LABEL[type];
-  const kpi1 = h('div', { class: 'kpi-row six' });
-  const kpi2 = h('div', { class: 'kpi-row six' });
+  const kpiAttention = h('div', { class: 'kpi-row attention-row-kpi' });
+  const kpiSummary = h('div', { class: 'kpi-row summary-row-kpi' });
   const dailyBody = h('div', {}, loadingState(4));
   const burnBody = h('div', {}, loadingState(4));
   const statusBody = h('div', {}, loadingState(3));
@@ -65,9 +65,11 @@ export async function renderDashboard(main, { query, navigate }) {
   const burnToggle = h('label', { class: 'checkbox small' }, h('input', { type: 'checkbox' }), 'Closed 누적 표시');
 
   main.append(
-    pageHead('Dashboard', `${typeLabel} 기준 품질 현황 · 등록/조치/미조치 Gap과 관리 필요 항목을 확인합니다.`, filterBar),
-    kpi1,
-    kpi2,
+    pageHead('Dashboard', `${typeLabel} 기준 오늘 확인해야 할 품질 리스크와 처리 현황입니다.`, filterBar),
+    h('div', { class: 'kpi-section-label' }, '관리 필요'),
+    kpiAttention,
+    h('div', { class: 'kpi-section-label mt-16' }, '전체 현황'),
+    kpiSummary,
     h('div', { class: 'mt-16' }, card(`일자별 ${typeLabel} 등록 / 조치`, dailyBody, { headRight: dailyLegend })),
     h('div', { class: 'dash-grid mt-16' }, card(`${typeLabel} Burn Up`, burnBody, { headRight: burnToggle }), card('상태 분포', statusBody)),
     h('div', { class: 'dash-grid equal' }, card('Priority 분포', prioBody), card('환경별 분포', envBody)),
@@ -88,7 +90,14 @@ export async function renderDashboard(main, { query, navigate }) {
     .summary(filter)
     .then((s) => {
       const d = s.drilldown;
-      clear(kpi1).append(
+      const a = s.attention;
+      clear(kpiAttention).append(
+        kpiCard({ label: 'Critical 미조치', value: a.criticalUnresolved, accent: a.criticalUnresolved ? 'danger' : null, onClick: () => drill(d.criticalUnresolved) }),
+        kpiCard({ label: '담당자 미지정', value: a.unassigned, accent: a.unassigned ? 'warning' : null, onClick: () => drill(d.unassigned) }),
+        kpiCard({ label: `장기 미조치 (${s.staleIssueDays}일+)`, value: a.stale, accent: a.stale ? 'warning' : null, onClick: () => drill(d.stale), title: `${s.staleIssueDays}일 이상 업데이트가 없는 Open/In Progress` }),
+        kpiCard({ label: '재검증대기', value: a.waitingVerification, accent: 'cyan', onClick: () => drill(d.waitingVerification), title: s.enableDeployment ? 'Done + 배포완료' : 'Done 전체' })
+      );
+      clear(kpiSummary).append(
         kpiCard({ label: `전체 ${typeLabel}`, value: s.total, onClick: () => drill(d.total) }),
         kpiCard({ label: '접수', labelEn: 'Open', value: s.status.open, onClick: () => drill(d.open) }),
         kpiCard({ label: '조치중', labelEn: 'In Progress', value: s.status.inProgress, accent: 'blue', onClick: () => drill(d.inProgress) }),
@@ -96,17 +105,13 @@ export async function renderDashboard(main, { query, navigate }) {
         kpiCard({ label: '완료', labelEn: 'Closed', value: s.status.closed, accent: 'success', onClick: () => drill(d.closed) }),
         kpiCard({ label: '취소', labelEn: 'Cancel', value: s.cancelled, onClick: () => drill(d.cancelled) })
       );
-      const a = s.attention;
-      clear(kpi2).append(
-        kpiCard({ label: 'Critical 미조치', value: a.criticalUnresolved, accent: a.criticalUnresolved ? 'danger' : null, onClick: () => drill(d.criticalUnresolved) }),
-        kpiCard({ label: '담당자 미지정', value: a.unassigned, accent: a.unassigned ? 'warning' : null, onClick: () => drill(d.unassigned) }),
-        kpiCard({ label: `장기 미조치 (${s.staleIssueDays}일+)`, value: a.stale, accent: a.stale ? 'warning' : null, onClick: () => drill(d.stale), title: `${s.staleIssueDays}일 이상 업데이트가 없는 Open/In Progress` }),
+      // 관리 필요와 별개로, Re-open/배포대기는 두 번째 줄 하단에 보조 지표로 유지
+      kpiSummary.append(
         kpiCard({ label: 'Re-open', value: a.reopened, accent: a.reopened ? 'danger' : null, onClick: () => drill(d.reopened), title: '재조치 요청 이력이 있고 아직 종료되지 않은 Issue' }),
-        kpiCard({ label: '배포대기', value: s.enableDeployment ? a.waitingDeploy : '-', accent: 'cyan', onClick: () => drill(d.waitingDeploy), title: 'Done + 미배포' }),
-        kpiCard({ label: '재검증대기', value: a.waitingVerification, accent: 'cyan', onClick: () => drill(d.waitingVerification), title: s.enableDeployment ? 'Done + 배포완료' : 'Done 전체' })
+        kpiCard({ label: '배포대기', value: s.enableDeployment ? a.waitingDeploy : '-', accent: 'cyan', onClick: () => drill(d.waitingDeploy), title: 'Done + 미배포' })
       );
     })
-    .catch((err) => clear(kpi1).append(errorBox(err)));
+    .catch((err) => clear(kpiAttention).append(errorBox(err)));
 
   // Daily
   const loadDaily = () =>

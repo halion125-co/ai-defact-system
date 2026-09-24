@@ -4,7 +4,7 @@
 import { api, onUnauthorized } from './api.js';
 import { store } from './store.js';
 import { route, setNotFound, setBeforeEach, startRouter, navigate, parseHash, buildHash } from './router.js';
-import { h, clear, toast, typeBadge, statusBadge, initials, debounce, emptyState } from './ui.js';
+import { h, clear, toast, typeBadge, statusBadge, initials, debounce, emptyState, icon } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderKanban } from './pages/kanban.js';
@@ -20,9 +20,9 @@ let mainEl = null;
 let currentPage = null;
 
 const NAV = [
-  { path: '/dashboard', label: 'Dashboard', ico: '◫' },
-  { path: '/issues/kanban', label: 'Issue 관리', ico: '☰', children: [{ path: '/issues/kanban', label: 'Kanban' }, { path: '/issues/list', label: '목록' }] },
-  { path: '/my', label: 'MY', ico: '◎', children: [{ path: '/my', query: { tab: 'reported' }, label: '내가 등록' }, { path: '/my', query: { tab: 'assigned' }, label: '내가 조치' }, { path: '/my', query: { tab: 'waiting' }, label: '확인대기' }] },
+  { path: '/dashboard', label: 'Dashboard', ico: 'grid' },
+  { path: '/issues/kanban', label: 'Issue 관리', ico: 'board', children: [{ path: '/issues/kanban', label: 'Kanban' }, { path: '/issues/list', label: '목록' }] },
+  { path: '/my', label: 'MY', ico: 'userCircle', children: [{ path: '/my', query: { tab: 'reported' }, label: '내가 등록' }, { path: '/my', query: { tab: 'assigned' }, label: '내가 조치' }, { path: '/my', query: { tab: 'waiting' }, label: '확인대기' }] },
 ];
 
 function isActive(path, query, cur) {
@@ -40,7 +40,7 @@ function renderShell() {
   const cur = parseHash();
   for (const item of NAV) {
     const active = isActive(item.path, null, cur) && !(item.children && item.children.some((c) => isActive(c.path, c.query, cur) && c.path !== item.path));
-    nav.append(h('a', { class: `nav-item${item.path !== '/my' && item.path !== '/issues/kanban' && cur.path === item.path ? ' active' : ''}`, href: `#${item.path}` }, h('span', { class: 'ico' }, item.ico), item.label));
+    nav.append(h('a', { class: `nav-item${item.path !== '/my' && item.path !== '/issues/kanban' && cur.path === item.path ? ' active' : ''}`, href: `#${item.path}` }, h('span', { class: 'ico' }, icon(item.ico, { size: 15 })), item.label));
     void active;
     if (item.children) {
       const sub = h('div', { class: 'nav-sub' });
@@ -51,10 +51,10 @@ function renderShell() {
       nav.append(sub);
     }
   }
-  nav.append(h('a', { class: 'nav-item nav-primary', href: '#/new' }, '+ Issue 등록'));
+  nav.append(h('a', { class: 'nav-item nav-primary', href: '#/new' }, h('span', { class: 'ico' }, icon('plus', { size: 13 })), 'Issue 등록'));
   if (store.isAdmin) {
-    nav.append(h('div', { class: 'nav-section' }, 'Quality Admin'));
-    nav.append(h('a', { class: `nav-item${cur.path === '/settings' ? ' active' : ''}`, href: '#/settings' }, h('span', { class: 'ico' }, '⚙'), '설정'));
+    nav.append(h('div', { class: 'nav-section' }, 'Admin'));
+    nav.append(h('a', { class: `nav-item${cur.path === '/settings' ? ' active' : ''}`, href: '#/settings' }, h('span', { class: 'ico' }, icon('gear', { size: 15 })), '설정'));
   }
   const foot = h('div', { class: 'sidebar-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT', width: 36 }), h('span', {}, 'v1.0'));
   sidebar.append(brand, nav, foot);
@@ -110,7 +110,7 @@ function renderShell() {
     { class: 'header' },
     menuBtn,
     h('div', { class: 'proj' }, p.customerName || '고객사', h('span', {}, '|'), p.projectName || '프로젝트'),
-    h('div', { class: 'search' }, h('span', { class: 'ico' }, '⌕'), searchInput, pop),
+    h('div', { class: 'search' }, h('span', { class: 'ico' }, icon('search', { size: 15 })), searchInput, pop),
     h('div', { class: 'spacer' }),
     h(
       'div',
