@@ -46,7 +46,7 @@ export async function renderDashboard(main, { query, navigate }) {
     sel('priority', [{ value: '', label: 'Priority 전체' }, ...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }], filter.priority)
   );
   const typeLabel = type === 'ALL' ? 'Issue(전체 유형)' : TYPE_LABEL[type];
-  const kpi1 = h('div', { class: 'kpi-row' });
+  const kpi1 = h('div', { class: 'kpi-row six' });
   const kpi2 = h('div', { class: 'kpi-row six' });
   const dailyBody = h('div', {}, loadingState(4));
   const burnBody = h('div', {}, loadingState(4));
@@ -76,11 +76,12 @@ export async function renderDashboard(main, { query, navigate }) {
     .then((s) => {
       const d = s.drilldown;
       clear(kpi1).append(
-        kpiCard({ label: `전체 ${typeLabel}`, value: s.total, sub: s.cancelled ? `Cancel ${s.cancelled}건 별도` : ' ', onClick: () => drill(d.total) }),
-        kpiCard({ label: 'Open · 접수', value: s.status.open, onClick: () => drill(d.open) }),
-        kpiCard({ label: 'In Progress · 조치중', value: s.status.inProgress, accent: 'blue', onClick: () => drill(d.inProgress) }),
-        kpiCard({ label: 'Done · 확인대기', value: s.status.done, accent: 'purple', onClick: () => drill(d.done) }),
-        kpiCard({ label: 'Closed · 완료', value: s.status.closed, accent: 'success', onClick: () => drill(d.closed) })
+        kpiCard({ label: `전체 ${typeLabel}`, value: s.total, onClick: () => drill(d.total) }),
+        kpiCard({ label: 'Open', value: s.status.open, onClick: () => drill(d.open) }),
+        kpiCard({ label: 'In Progress', value: s.status.inProgress, accent: 'blue', onClick: () => drill(d.inProgress) }),
+        kpiCard({ label: 'Done', value: s.status.done, accent: 'purple', onClick: () => drill(d.done) }),
+        kpiCard({ label: 'Closed', value: s.status.closed, accent: 'success', onClick: () => drill(d.closed) }),
+        kpiCard({ label: 'Cancel', value: s.cancelled, onClick: () => drill(d.cancelled) })
       );
       const a = s.attention;
       clear(kpi2).append(
@@ -170,7 +171,7 @@ export async function renderDashboard(main, { query, navigate }) {
           const row = h(
             'button',
             { class: 'attention-row', onClick: () => drill(it.drilldown) },
-            h('div', {}, h('div', { style: { fontWeight: 600 } }, it.label), it.sample.length ? h('div', { class: 'small muted mt-8 flex flex-wrap' }, ...it.sample.map((s) => h('span', { class: 'flex', style: { gap: '4px' } }, h('span', { class: 'mono' }, s.id), priorityBadge(s.priority), statusBadge(s.status), h('span', { class: 'nowrap', style: { maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.title)))) : null),
+            h('div', { style: { minWidth: 0 } }, h('div', { style: { fontWeight: 600 } }, it.label), it.sample.length ? h('div', { class: 'small muted mt-8 flex flex-wrap' }, ...it.sample.map((s) => h('span', { class: 'flex', style: { gap: '4px', minWidth: 0, maxWidth: '100%' } }, h('span', { class: 'mono' }, s.id), priorityBadge(s.priority), statusBadge(s.status), h('span', { class: 'nowrap', style: { maxWidth: 'min(200px, 40vw)', overflow: 'hidden', textOverflow: 'ellipsis' } }, s.title)))) : null),
             h('span', { class: `cnt${it.count === 0 ? ' zero' : it.key === 'criticalUnresolved' || it.key === 'reopened' ? ' hot' : ''}` }, `${it.count}건`)
           );
           list.append(row);

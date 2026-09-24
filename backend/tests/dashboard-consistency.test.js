@@ -85,7 +85,8 @@ function expectedFor(c, type) {
   const resolvedEver = active.filter((i) => i.resolution && i.resolution.firstResolvedAt).length;
   const closedEver = active.filter((i) => i.close && i.close.firstClosedAt).length;
   return {
-    total: active.length,
+    total: all.length,
+    activeTotal: active.length,
     cancelled: all.length - active.length,
     open: cnt('OPEN'),
     inProgress: cnt('IN_PROGRESS'),
@@ -122,16 +123,16 @@ test('유형별(DEFECT/IMPROVEMENT/INQUIRY) Dashboard 집계가 원본과 일치
     for (const [key, val] of Object.entries({ total: exp.total, open: exp.open, inProgress: exp.inProgress, done: exp.done, closed: exp.closed, cancelled: exp.cancelled, reopened: exp.reopened, unassigned: exp.unassigned, currentlyUnresolved: exp.unresolved, criticalUnresolved: exp.critical })) {
       assert.equal(c.issueService.list(admin, s.drilldown[key]).total, val, `${type} drilldown ${key}`);
     }
-    // 분포 합계 = total (상태), Priority 합계 = total, 환경 합계 = total(환경 있는 유형만)
+    // 분포 합계 = activeTotal (상태), Priority 합계 = activeTotal, 환경 합계 = activeTotal(환경 있는 유형만) — 분포 차트는 Cancel 제외
     const dist = c.dashboardService.distribution({ type });
-    assert.equal(dist.status.reduce((a, b) => a + b.count, 0), exp.total);
-    assert.equal(dist.priority.reduce((a, b) => a + b.count, 0), exp.total);
-    if (type === 'DEFECT') assert.equal(dist.environment.reduce((a, b) => a + b.count, 0), exp.total);
+    assert.equal(dist.status.reduce((a, b) => a + b.count, 0), exp.activeTotal);
+    assert.equal(dist.priority.reduce((a, b) => a + b.count, 0), exp.activeTotal);
+    if (type === 'DEFECT') assert.equal(dist.environment.reduce((a, b) => a + b.count, 0), exp.activeTotal);
   }
-  // 세 유형 합 = 전체(Cancel 제외)
+  // 세 유형 합 = 전체(Cancel 포함, KPI "전체" 카드 기준)
   const totals = ['DEFECT', 'IMPROVEMENT', 'INQUIRY'].map((t) => c.dashboardService.summary({ type: t }).total);
-  assert.equal(totals.reduce((a, b) => a + b, 0), c.repos.issueRepo.all().filter((i) => i.status !== 'CANCEL').length);
-  assert.deepEqual(totals, [5, 2, 1]);
+  assert.equal(totals.reduce((a, b) => a + b, 0), c.repos.issueRepo.all().length);
+  assert.deepEqual(totals, [6, 2, 1]);
 });
 
 test('Burn Up: 누적 등록/조치/Closed가 원본 날짜와 일치하고 단조 증가, Re-open 후에도 누적 조치 유지', async () => {
@@ -140,13 +141,13 @@ test('Burn Up: 누적 등록/조치/Closed가 원본 날짜와 일치하고 단�
   const exp = expectedFor(c, 'DEFECT');
   const b = c.dashboardService.burnup({ type: 'DEFECT' });
   const last = b.items.at(-1);
-  assert.equal(last.createdCumulative, exp.total);
+  assert.equal(last.createdCumulative, exp.activeTotal);
   assert.equal(last.resolvedCumulative, exp.resolvedEver, 'd2(re-open) + d3 + d4 = 3');
   assert.equal(last.closedCumulative, exp.closedEver);
-  assert.equal(b.current.total, exp.total);
+  assert.equal(b.current.total, exp.activeTotal);
   assert.equal(b.current.resolvedEver, 3);
   assert.equal(b.current.currentlyUnresolved, exp.unresolved, 'OPEN 2 + IN_PROGRESS 1(re-open)');
-  assert.equal(b.current.gap, exp.total - exp.resolvedEver);
+  assert.equal(b.current.gap, exp.activeTotal - exp.resolvedEver);
   assert.equal(b.current.reopenedCurrent, 1);
   // 날짜별 누적 = 해당 일자까지 등록 건수 합
   let run = 0;
@@ -163,7 +164,7 @@ test('Burn Up: 누적 등록/조치/Closed가 원본 날짜와 일치하고 단�
   }
   // 일자별 합계 = 누적 마지막 값
   const d = c.dashboardService.daily({ type: 'DEFECT' });
-  assert.equal(d.items.reduce((a, x) => a + x.created, 0), exp.total);
+  assert.equal(d.items.reduce((a, x) => a + x.created, 0), exp.activeTotal);
   assert.equal(d.items.reduce((a, x) => a + x.resolved, 0), exp.resolvedEver);
   assert.equal(d.items.reduce((a, x) => a + x.closed, 0), exp.closedEver);
   // resolvedOn drill-down: 해당 일자 최초 조치 건수와 일치
@@ -281,13 +282,13 @@ test('개선요청/문의의 조치 완료·Close도 KPI/일자별/Burn Up 처�
   // Drill-down 일치
   assert.equal(c.issueService.list(admin, { type: 'INQUIRY', resolvedEver: 'true' }).total, 2);
   assert.equal(c.issueService.list(admin, { type: 'IMPROVEMENT', status: 'CLOSED' }).total, 1);
-  // ALL: 결함 5 + 개선 3 + 문의 3 = 11, 누적 조치 = 3 + 1 + 2 = 6
+  // ALL: 결함 6(Cancel 1건 포함) + 개선 3 + 문의 3 = 12, 누적 조치 = 3 + 1 + 2 = 6
   const sa = c.dashboardService.summary({ type: 'ALL' });
-  assert.equal(sa.total, 11);
+  assert.equal(sa.total, 12);
   const ba = c.dashboardService.burnup({ type: 'ALL' });
   assert.equal(ba.current.resolvedEver, 6);
   assert.equal(ba.current.closedEver, 1 + 1 + 1);
-  assert.equal(c.issueService.list(admin, sa.drilldown.total).total, 11, 'ALL drilldown');
+  assert.equal(c.issueService.list(admin, sa.drilldown.total).total, 12, 'ALL drilldown');
   assert.equal(c.issueService.list(admin, sa.drilldown.closed).total, 3);
   const da = c.dashboardService.distribution({ type: 'ALL' });
   assert.equal(da.status.reduce((a, b) => a + b.count, 0), 11);

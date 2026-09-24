@@ -159,6 +159,13 @@ button { cursor: pointer; }
 .sidebar-foot span { font-size: 11px; color: #6E86A6; }
 
 .header { background: var(--navy-deep); color: #fff; display: flex; align-items: center; gap: 20px; padding: 0 24px; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; z-index: 20; }
+.menu-toggle { display: none; flex: none; width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); background: transparent; align-items: center; justify-content: center; }
+.menu-toggle:hover { background: rgba(255,255,255,0.08); }
+.menu-toggle .bars, .menu-toggle .bars::before, .menu-toggle .bars::after { content: ''; display: block; width: 18px; height: 2px; background: #fff; border-radius: 1px; }
+.menu-toggle .bars { position: relative; }
+.menu-toggle .bars::before { position: absolute; top: -6px; }
+.menu-toggle .bars::after { position: absolute; top: 6px; }
+.sidebar-overlay { display: none; }
 .header .proj { font-weight: 600; white-space: nowrap; }
 .header .proj span { color: #8FA6C4; font-weight: 400; margin: 0 8px; }
 .header .search { flex: 1; max-width: 520px; position: relative; }
@@ -356,10 +363,11 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .chart-tip .r { display: flex; justify-content: space-between; gap: 14px; }
 .chart-wrap { position: relative; }
 .attention-list { display: flex; flex-direction: column; }
-.attention-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 6px; border-bottom: 1px solid var(--border); background: none; border-left: none; border-right: none; border-top: none; width: 100%; text-align: left; }
+.attention-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 6px; border-bottom: 1px solid var(--border); background: none; border-left: none; border-right: none; border-top: none; width: 100%; text-align: left; }
 .attention-row:last-child { border-bottom: none; }
 .attention-row:hover { background: var(--blue-soft); }
-.attention-row .cnt { font-weight: 700; font-size: 18px; min-width: 48px; text-align: right; }
+.attention-row > div:first-child { min-width: 0; }
+.attention-row .cnt { font-weight: 700; font-size: 18px; min-width: 48px; text-align: right; flex: none; }
 .attention-row .cnt.zero { color: var(--text-3); font-weight: 500; }
 .attention-row .cnt.hot { color: var(--danger); }
 .dist-list { display: flex; flex-direction: column; gap: 8px; }
@@ -497,6 +505,54 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   .login-wrap { grid-template-columns: 1fr; }
   .login-brand { display: none; }
   .form-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; }
+  .menu-toggle { display: flex; }
+  .dash-grid.equal { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    z-index: 50;
+    left: 0;
+    top: 0;
+    width: min(280px, 82vw);
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.35);
+  }
+  .shell.sidebar-open .sidebar { transform: translateX(0); }
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(6,12,24,0.5);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  .shell.sidebar-open .sidebar-overlay { opacity: 1; pointer-events: auto; }
+  .header .proj { display: none; }
+  .header .search { max-width: none; }
+  .header .user .name, .header .user .role { display: none; }
+  .kpi-row, .kpi-row.six { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .kpi { padding: 12px 12px; }
+  .kpi .value { font-size: 22px; }
+  .kpi .label { font-size: 12px; }
+  .meta-grid { grid-template-columns: repeat(2, 1fr); }
+  .dist-row { grid-template-columns: 70px 1fr 32px; }
+}
+@media (max-width: 520px) {
+  .header { gap: 10px; padding: 0 12px; }
+  .header .user span.role { display: none; }
+  .main { padding: 16px 14px 32px; }
+  .kanban { grid-template-columns: 1fr; }
+  .kpi-row, .kpi-row.six { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .kpi .value { font-size: 20px; }
+  .page-head h1 { font-size: 21px; }
+  .meta-grid { grid-template-columns: 1fr; }
+  .dist-row { grid-template-columns: 60px 1fr 28px; font-size: 12px; }
 }
 @media print {
   .sidebar, .header, .action-bar, .composer { display: none !important; }

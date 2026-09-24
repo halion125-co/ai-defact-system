@@ -49,6 +49,7 @@ class DashboardService {
       closed: count((i) => i.status === STATUS.CLOSED),
     };
     const cancelled = Q.applyFilters(this.issueRepo.all(), { ...filter, status: STATUS.CANCEL }, { operation }).length;
+    const totalWithCancelled = issues.length + cancelled;
     const attention = {
       criticalUnresolved: count(Q.isCriticalUnresolved),
       unassigned: count((i) => i.assignee == null && i.status === STATUS.OPEN),
@@ -59,14 +60,14 @@ class DashboardService {
       currentlyUnresolved: count(Q.isUnresolved),
     };
     return {
-      total: issues.length,
+      total: totalWithCancelled,
       cancelled,
       status,
       attention,
       staleIssueDays: operation.staleIssueDays,
       enableDeployment: !!operation.enableDeployment,
       drilldown: {
-        total: this._drill(filter, {}),
+        total: this._drill(filter, { includeCancel: 'true' }),
         open: this._drill(filter, { status: STATUS.OPEN }),
         inProgress: this._drill(filter, { status: STATUS.IN_PROGRESS }),
         done: this._drill(filter, { status: STATUS.DONE }),

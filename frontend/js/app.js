@@ -58,6 +58,10 @@ function renderShell() {
   }
   const foot = h('div', { class: 'sidebar-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT', width: 36 }), h('span', {}, 'v1.0'));
   sidebar.append(brand, nav, foot);
+  // 모바일: 메뉴 클릭 시 사이드바 자동으로 닫기
+  sidebar.addEventListener('click', (e) => {
+    if (e.target.closest('a.nav-item')) closeSidebar();
+  });
 
   // Header
   const searchInput = h('input', { type: 'search', placeholder: 'Issue 검색 (ID, 제목, 등록자, Comment)', 'aria-label': 'Issue 검색' });
@@ -100,9 +104,11 @@ function renderShell() {
   document.addEventListener('click', (e) => {
     if (!pop.contains(e.target) && e.target !== searchInput) closePop();
   });
+  const menuBtn = h('button', { class: 'menu-toggle', 'aria-label': '메뉴 열기', onClick: toggleSidebar }, h('span', { class: 'bars' }));
   const header = h(
     'header',
     { class: 'header' },
+    menuBtn,
     h('div', { class: 'proj' }, p.customerName || '고객사', h('span', {}, '|'), p.projectName || '프로젝트'),
     h('div', { class: 'search' }, h('span', { class: 'ico' }, '⌕'), searchInput, pop),
     h('div', { class: 'spacer' }),
@@ -114,10 +120,21 @@ function renderShell() {
       h('button', { class: 'btn btn-ghost btn-sm', onClick: switchUser }, '사용자 변경')
     )
   );
+  const overlay = h('div', { class: 'sidebar-overlay', onClick: closeSidebar });
   mainEl = h('main', { class: 'main', id: 'main' });
-  shellEl = h('div', { class: 'shell' }, sidebar, header, mainEl);
+  shellEl = h('div', { class: 'shell' }, sidebar, overlay, header, mainEl);
   clear(app).append(shellEl);
 }
+
+function toggleSidebar() {
+  if (shellEl) shellEl.classList.toggle('sidebar-open');
+}
+function closeSidebar() {
+  if (shellEl) shellEl.classList.remove('sidebar-open');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSidebar();
+});
 
 async function switchUser() {
   try {
@@ -152,6 +169,7 @@ function ensureShell() {
 function mount(renderFn) {
   return async (ctx) => {
     const main = ensureShell();
+    closeSidebar();
     clear(main);
     main.scrollTop = 0;
     window.scrollTo(0, 0);
