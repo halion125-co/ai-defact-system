@@ -1,7 +1,7 @@
 'use strict';
 
 const { errors } = require('../utils/errors');
-const { cleanText } = require('../utils/text');
+const { cleanText, josa } = require('../utils/text');
 const { PRIORITIES, ISSUE_STATUSES, CLOSE_TYPES } = require('../models/constants');
 
 function fail(message, field) {
@@ -15,15 +15,15 @@ function requireObject(body) {
 
 function text(value, { field, label, required = true, min = 0, max = 2000, multiline = false }) {
   if (value !== undefined && value !== null && typeof value !== 'string') {
-    throw fail(`${label}은(는) 문자열이어야 합니다.`, field);
+    throw fail(`${josa(label, '은/는')} 문자열이어야 합니다.`, field);
   }
   const v = cleanText(value, { multiline });
   if (!v) {
-    if (required) throw fail(`${label}을(를) 입력해주세요.`, field);
+    if (required) throw fail(`${josa(label, '을/를')} 입력해주세요.`, field);
     return '';
   }
-  if (v.length < min) throw fail(`${label}은(는) ${min}자 이상 입력해주세요.`, field);
-  if (v.length > max) throw fail(`${label}은(는) ${max}자 이하로 입력해주세요.`, field);
+  if (v.length < min) throw fail(`${josa(label, '은/는')} ${min}자 이상 입력해주세요.`, field);
+  if (v.length > max) throw fail(`${josa(label, '은/는')} ${max}자 이하로 입력해주세요.`, field);
   return v;
 }
 

@@ -6,7 +6,7 @@ import { api } from '../api.js';
 import { store } from '../store.js';
 import {
   h, clear, card, statusBadge, priorityBadge, typeBadge, deployBadge, fmtDateTime, fmtBytes, userLabel, initials, toast, errorMessage, errorBox, conflictBox,
-  loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue,
+  loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue, josa,
 } from '../ui.js';
 
 const FIELD_LABEL = {
@@ -25,7 +25,7 @@ function fieldValueText(k, v) {
   if (k === 'reproductionSteps' && Array.isArray(v)) return v.map((s) => `${s.order}. ${s.text}`).join('\n');
   if (k === 'environment') return v.displayNameSnapshot || v.id;
   if (k === 'assignee') return v ? userLabel(v) : '미지정';
-  if (k === 'status') return `${STATUS_LABEL[v]} · ${STATUS_KO[v]}`;
+  if (k === 'status') return `${STATUS_KO[v]} · ${STATUS_LABEL[v]}`;
   if (k === 'priority') return store.priorityName(v);
   if (k === 'deployment') return v && v.status === 'DEPLOYED' ? `${v.environmentNameSnapshot || ''} ${v.version || ''}`.trim() : '미배포';
   return typeof v === 'object' ? JSON.stringify(v) : String(v);
@@ -258,7 +258,7 @@ export async function renderDetail(main, { params, navigate }) {
         title: '관리자 상태 강제 변경',
         description: 'Quality Admin 전용. 일반 Workflow와 별도로 ADMIN_STATUS_OVERRIDE 이력이 남습니다. 사유는 필수입니다.',
         fields: [
-          { name: 'status', label: '변경할 상태', type: 'select', required: true, options: Object.entries(STATUS_LABEL).filter(([c]) => c !== issue.status).map(([value, label]) => ({ value, label: `${label} · ${STATUS_KO[value]}` })) },
+          { name: 'status', label: '변경할 상태', type: 'select', required: true, options: Object.entries(STATUS_LABEL).filter(([c]) => c !== issue.status).map(([value, label]) => ({ value, label: `${STATUS_KO[value]} · ${label}` })) },
           { name: 'reason', label: '변경 사유', type: 'textarea', required: true, placeholder: '예) 고객 재검증 결과 동일 현상 발생' },
         ],
         submitLabel: '강제 변경',
@@ -289,7 +289,7 @@ export async function renderDetail(main, { params, navigate }) {
         title: 'Priority 변경',
         description: afterClaim ? '조치자로 지정되었습니다. 이어서 Priority를 지정해주세요. (나중에 변경 가능)' : `현재: ${store.priorityName(issue.priority)}`,
         fields: [
-          { name: 'priority', label: 'Priority', type: 'select', required: true, options: store.activePriorities().map((pr) => ({ value: pr.code, label: `${pr.displayName} — ${pr.description || ''}` })), value: issue.priority !== 'UNASSIGNED' ? issue.priority : undefined },
+          { name: 'priority', label: 'Priority(심각도)', type: 'select', required: true, options: store.activePriorities().map((pr) => ({ value: pr.code, label: `${pr.displayName} — ${pr.description || ''}` })), value: issue.priority !== 'UNASSIGNED' ? issue.priority : undefined },
           { name: 'reason', label: '사유 (선택)', placeholder: '예) 로그인 불가로 테스트 진행 불가' },
         ],
         submitLabel: '변경',
@@ -356,7 +356,7 @@ export async function renderDetail(main, { params, navigate }) {
       const el = h('span', { class: 'att' }, h('a', { class: 'name', href: url, title: a.originalName }, '📎 ', a.originalName), h('span', { class: 'size' }, fmtBytes(a.size)), isImg ? h('button', { class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null);
       if (p.isAdmin || a.uploadedBy === store.user.userId) {
         el.append(h('button', { class: 'del', title: '삭제', 'aria-label': `${a.originalName} 삭제`, onClick: async () => {
-          if (!(await confirmModal({ title: '첨부 삭제', message: `${a.originalName}을(를) 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
+          if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
           try {
             await run((rev) => api.issues.deleteAttachment(issue.id, a.attachmentId, rev), '첨부가 삭제되었습니다.');
           } catch (err) {

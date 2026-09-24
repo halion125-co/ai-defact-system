@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes } from '../ui.js';
+import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa } from '../ui.js';
 
 const DRAFT_KEY = 'dms.draft';
 
@@ -60,7 +60,7 @@ function successPanel(main, { id, title, type }, again) {
       { class: 'card success-panel', style: { margin: '40px auto' } },
       h('div', { style: { fontSize: '40px' } }, '✓'),
       h('div', { class: 'id' }, id),
-      h('h2', { style: { margin: '0 0 6px' } }, `${{ DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' }[type]}이(가) 등록되었습니다.`),
+      h('h2', { style: { margin: '0 0 6px' } }, `${josa({ DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' }[type], '이/가')} 등록되었습니다.`),
       h('p', { class: 'muted' }, title),
       h(
         'div',
@@ -255,7 +255,7 @@ function renderSimpleForm(main, navigate, type) {
       } catch (err) {
         toast(`Issue는 등록되었으나 첨부 업로드에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
       }
-      toast(`${res.id} ${isImp ? '개선요청' : '문의'}이(가) 등록되었습니다.`, 'success');
+      toast(`${res.id} ${josa(isImp ? '개선요청' : '문의', '이/가')} 등록되었습니다.`, 'success');
       successPanel(main, { ...res, type }, () => { clear(main); renderSimpleForm(main, navigate, type); });
     } catch (err) {
       const f = err.details && err.details.field;

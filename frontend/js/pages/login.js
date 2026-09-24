@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, setBusy, errorMessage, initials } from '../ui.js';
+import { h, clear, setBusy, errorMessage, initials, josa } from '../ui.js';
 
 export async function renderLogin(root, { onLogin, admin = false }) {
   if (admin) return renderAdminLogin(root, { onLogin });
@@ -101,7 +101,7 @@ export async function renderLogin(root, { onLogin, admin = false }) {
         if (!data[k]) {
           wraps[k].classList.add('has-error');
           const m = wraps[k].querySelector('.error-msg');
-          m.textContent = `${fields[k]}을(를) 입력해주세요.`;
+          m.textContent = `${josa(fields[k], '을/를')} 입력해주세요.`;
           m.classList.remove('hidden');
           bad = true;
         }

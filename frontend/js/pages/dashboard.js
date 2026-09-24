@@ -67,8 +67,14 @@ export async function renderDashboard(main, { query, navigate }) {
     card('관리 필요', attBody, { headRight: h('span', { class: 'small muted' }, '클릭 시 해당 목록으로 이동') })
   );
 
-  const kpiCard = ({ label, value, sub, accent, onClick, title }) =>
-    h('button', { class: `kpi${accent ? ` accent-${accent}` : ''}`, onClick, title: title || `${label} 목록 보기` }, h('span', { class: 'label' }, label), h('span', { class: 'value' }, value), sub ? h('span', { class: 'sub' }, sub) : null);
+  const kpiCard = ({ label, labelEn, value, sub, accent, onClick, title }) =>
+    h(
+      'button',
+      { class: `kpi${accent ? ` accent-${accent}` : ''}`, onClick, title: title || `${label} 목록 보기` },
+      h('span', { class: 'label' }, label, labelEn ? h('span', { class: 'label-en' }, labelEn) : null),
+      h('span', { class: 'value' }, value),
+      sub ? h('span', { class: 'sub' }, sub) : null
+    );
 
   // Summary
   api.dashboard
@@ -77,11 +83,11 @@ export async function renderDashboard(main, { query, navigate }) {
       const d = s.drilldown;
       clear(kpi1).append(
         kpiCard({ label: `전체 ${typeLabel}`, value: s.total, onClick: () => drill(d.total) }),
-        kpiCard({ label: 'Open', value: s.status.open, onClick: () => drill(d.open) }),
-        kpiCard({ label: 'In Progress', value: s.status.inProgress, accent: 'blue', onClick: () => drill(d.inProgress) }),
-        kpiCard({ label: 'Done', value: s.status.done, accent: 'purple', onClick: () => drill(d.done) }),
-        kpiCard({ label: 'Closed', value: s.status.closed, accent: 'success', onClick: () => drill(d.closed) }),
-        kpiCard({ label: 'Cancel', value: s.cancelled, onClick: () => drill(d.cancelled) })
+        kpiCard({ label: '접수', labelEn: 'Open', value: s.status.open, onClick: () => drill(d.open) }),
+        kpiCard({ label: '조치중', labelEn: 'In Progress', value: s.status.inProgress, accent: 'blue', onClick: () => drill(d.inProgress) }),
+        kpiCard({ label: '확인대기', labelEn: 'Done', value: s.status.done, accent: 'purple', onClick: () => drill(d.done) }),
+        kpiCard({ label: '완료', labelEn: 'Closed', value: s.status.closed, accent: 'success', onClick: () => drill(d.closed) }),
+        kpiCard({ label: '취소', labelEn: 'Cancel', value: s.cancelled, onClick: () => drill(d.cancelled) })
       );
       const a = s.attention;
       clear(kpi2).append(

@@ -47,4 +47,23 @@ function getExtension(filename) {
   return m ? m[1].toLowerCase() : '';
 }
 
-module.exports = { cleanText, escapeHtml, makeTitle, sanitizeFilename, getExtension };
+/** 문자열 끝 글자의 한글 받침 유무. "Priority(심각도)"처럼 괄호 부연설명이 붙은 라벨은 괄호 안 마지막 글자로 판단한다.
+ * 한글 완성형(가~힣) 외 문자는 받침 있음으로 간주(숫자/영문 뒤에는 "을"/"이"가 자연스러움). */
+function hasFinalConsonant(str) {
+  const s = String(str || '').trim();
+  if (!s) return true;
+  const m = /\)\s*$/.test(s) && /\(([^()]*)\)\s*$/.exec(s);
+  const target = m ? m[1] : s;
+  if (!target) return true;
+  const code = target.codePointAt(target.length - 1);
+  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 !== 0;
+  return true;
+}
+
+/** 명사 뒤에 붙는 조사를 받침 유무에 맞춰 고른다. josa(단어, '을/를') → '을' 또는 '를'. */
+function josa(word, pair) {
+  const [withFinal, withoutFinal] = pair.split('/');
+  return `${word}${hasFinalConsonant(word) ? withFinal : withoutFinal}`;
+}
+
+module.exports = { cleanText, escapeHtml, makeTitle, sanitizeFilename, getExtension, hasFinalConsonant, josa };

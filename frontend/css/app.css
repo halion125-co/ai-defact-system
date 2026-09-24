@@ -223,6 +223,8 @@ button { cursor: pointer; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; line-height: 1; }
+.badge-en { font-size: 10px; font-weight: 500; opacity: 0.7; }
+.badge-en:empty { display: none; }
 .badge-lg { height: 26px; padding: 0 10px; font-size: 13px; }
 .badge.status-OPEN { background: var(--gray-soft); color: #475467; }
 .badge.status-IN_PROGRESS { background: var(--blue-soft); color: var(--blue); }
@@ -331,6 +333,7 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; text-align: left; box-shadow: var(--shadow); cursor: pointer; transition: border-color 0.12s, transform 0.12s; display: flex; flex-direction: column; gap: 4px; }
 .kpi:hover { border-color: var(--blue); transform: translateY(-1px); }
 .kpi .label { color: var(--text-2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.kpi .label-en { font-size: 10px; font-weight: 500; opacity: 0.6; }
 .kpi .value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.1; }
 .kpi .sub { font-size: 12px; color: var(--text-3); }
 .kpi.accent-danger .value { color: var(--danger); }

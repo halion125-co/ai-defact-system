@@ -4,6 +4,24 @@
 import { store } from './store.js';
 import { ApiError } from './api.js';
 
+/** 문자열 끝 글자의 한글 받침 유무. "Priority(심각도)"처럼 괄호 부연설명이 붙은 라벨은 괄호 안 마지막 글자로 판단한다.
+ * 한글 완성형(가~힣) 외 문자는 받침 있음으로 간주. */
+function hasFinalConsonant(str) {
+  const s = String(str || '').trim();
+  if (!s) return true;
+  const m = /\)\s*$/.test(s) && /\(([^()]*)\)\s*$/.exec(s);
+  const target = m ? m[1] : s;
+  if (!target) return true;
+  const code = target.codePointAt(target.length - 1);
+  if (code >= 0xac00 && code <= 0xd7a3) return (code - 0xac00) % 28 !== 0;
+  return true;
+}
+/** 명사 뒤에 붙는 조사를 받침 유무에 맞춰 고른다. josa('결함', '이/가') → '결함이', josa('문의', '이/가') → '문의가'. */
+export function josa(word, pair) {
+  const [withFinal, withoutFinal] = pair.split('/');
+  return `${word}${hasFinalConsonant(word) ? withFinal : withoutFinal}`;
+}
+
 /* ---------- h() ---------- */
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -72,23 +90,46 @@ export const EVENT_LABEL = {
 };
 
 /* ---------- Badges ---------- */
-export const statusBadge = (s, lg) => h('span', { class: `badge status-${s}${lg ? ' badge-lg' : ''}` }, `${STATUS_LABEL[s] || s} · ${STATUS_KO[s] || ''}`);
+export const statusBadge = (s, lg) =>
+  h('span', { class: `badge status-${s}${lg ? ' badge-lg' : ''}` }, STATUS_KO[s] || s, h('span', { class: 'badge-en' }, STATUS_LABEL[s] || ''));
 export const priorityBadge = (p, lg) => h('span', { class: `badge prio-${p || 'UNASSIGNED'}${lg ? ' badge-lg' : ''}` }, store.priorityName(p));
 export const typeBadge = (t, lg) => h('span', { class: `badge type-${t}${lg ? ' badge-lg' : ''}` }, `${TYPE_ICON[t] || ''} ${TYPE_LABEL[t] || t}`);
 export const deployBadge = (d) => h('span', { class: `badge deploy-${d}` }, d === 'DEPLOYED' ? '배포완료' : '미배포');
 
-/* ---------- Format ---------- */
+/* ---------- Format ----------
+ * 저장된 시각은 두 표기가 섞여 있을 수 있다: 서버 자체 기록(nowIso)은 "+09:00" 오프셋이 붙은
+ * KST 문자열, 사용자가 <input type="datetime-local">로 입력한 값은 프론트에서 UTC("...Z")로
+ * 변환해 전달한다. 문자열을 그대로 슬라이스하면 후자는 KST가 아닌 UTC 시각이 노출되므로,
+ * 항상 Date로 파싱한 뒤 Asia/Seoul 기준으로 다시 포맷한다.
+ */
+const KST_TZ = 'Asia/Seoul';
+const dtFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: KST_TZ,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+function kstParts(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const out = {};
+  for (const p of dtFormatter.formatToParts(d)) if (p.type !== 'literal') out[p.type] = p.value;
+  return out;
+}
 export function fmtDate(iso) {
-  if (!iso) return '-';
-  return String(iso).slice(0, 10);
+  const p = iso && kstParts(iso);
+  return p ? `${p.year}-${p.month}-${p.day}` : '-';
 }
 export function fmtDateTime(iso) {
-  if (!iso) return '-';
-  const s = String(iso);
-  return `${s.slice(0, 10)} ${s.slice(11, 16)}`;
+  const p = iso && kstParts(iso);
+  return p ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}` : '-';
 }
 export function fmtTime(iso) {
-  return iso ? String(iso).slice(11, 16) : '';
+  const p = iso && kstParts(iso);
+  return p ? `${p.hour}:${p.minute}` : '';
 }
 export function fmtBytes(n) {
   if (n == null) return '';
@@ -175,6 +216,9 @@ export function formModal({ title, description, fields = [], submitLabel = '저�
     if (f.type === 'textarea') input = h('textarea', { class: 'input', name: f.name, placeholder: f.placeholder || '', rows: f.rows || 4 });
     else if (f.type === 'select') {
       input = h('select', { class: 'input', name: f.name });
+      // 기본 선택값을 명시하지 않은 필수 select는 브라우저가 첫 옵션을 자동 선택하므로,
+      // 사용자가 실제로 고르기 전까지는 빈 placeholder 옵션을 기본값으로 둔다.
+      if (f.required && (f.value === undefined || f.value === null)) input.append(h('option', { value: '' }, f.placeholder || '선택하세요'));
       for (const o of f.options || []) input.append(h('option', { value: o.value }, o.label));
     } else input = h('input', { class: 'input', name: f.name, type: f.type || 'text', placeholder: f.placeholder || '' });
     if (f.value !== undefined && f.value !== null) input.value = f.value;
@@ -215,7 +259,7 @@ export function formModal({ title, description, fields = [], submitLabel = '저�
     let bad = false;
     for (const f of fields) {
       if (f.required && !values[f.name]) {
-        showFieldError(f.name, `${f.label}을(를) 입력해주세요.`);
+        showFieldError(f.name, `${josa(f.label, '을/를')} 입력해주세요.`);
         bad = true;
       }
     }

@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, card, forbiddenState, toast, errorMessage, setBusy, confirmModal, formModal, loadingState, errorBox, fmtDateTime, fmtBytes } from '../ui.js';
+import { h, clear, pageHead, card, forbiddenState, toast, errorMessage, setBusy, confirmModal, formModal, loadingState, errorBox, fmtDateTime, fmtBytes, josa } from '../ui.js';
 
 const TABS = [
   { key: 'project', label: '프로젝트' },
@@ -72,7 +72,7 @@ async function tabEnvironments(content) {
       toggle.addEventListener('click', () => saveWith(toggle, () => api.config.updateEnvironment(e.id, { active: !e.active }), e.active ? '비활성화되었습니다. 신규 등록 시 선택할 수 없습니다.' : '활성화되었습니다.').then(draw));
       const del = h('button', { class: 'btn btn-danger-outline btn-xs' }, '삭제');
       del.addEventListener('click', async () => {
-        if (!(await confirmModal({ title: '환경 삭제', message: `${e.displayName}을(를) 삭제합니다. 기존 Issue가 참조 중이면 물리 삭제 대신 비활성 처리됩니다.`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
+        if (!(await confirmModal({ title: '환경 삭제', message: `${josa(e.displayName, '을/를')} 삭제합니다. 기존 Issue가 참조 중이면 물리 삭제 대신 비활성 처리됩니다.`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
         setBusy(del, true);
         try {
           const res = await api.config.removeEnvironment(e.id);
@@ -153,7 +153,7 @@ async function tabUsers(content) {
         );
         const admin = h('button', { class: `btn btn-xs ${u.isQualityAdmin ? 'btn-ghost' : 'btn-secondary'}`, disabled: u.userId === store.user.userId }, u.isQualityAdmin ? 'Admin 해제' : 'Admin 지정');
         admin.addEventListener('click', async () => {
-          if (!(await confirmModal({ title: 'Quality Admin 변경', message: `${u.name}을(를) Quality Admin ${u.isQualityAdmin ? '해제' : '지정'}합니다.`, confirmLabel: '변경' }))) return;
+          if (!(await confirmModal({ title: 'Quality Admin 변경', message: `${josa(u.name, '을/를')} Quality Admin ${u.isQualityAdmin ? '해제' : '지정'}합니다.`, confirmLabel: '변경' }))) return;
           try { await api.users.update(u.userId, { isQualityAdmin: !u.isQualityAdmin }); toast('변경되었습니다.', 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
         });
         const act = h('button', { class: `btn btn-xs ${u.active ? 'btn-danger-outline' : 'btn-secondary'}`, disabled: u.userId === store.user.userId }, u.active ? '비활성화' : '활성화');
