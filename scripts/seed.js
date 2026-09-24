@@ -132,6 +132,16 @@ async function main() {
   // 12: Open unassigned
   await flow(imp.id, [claim(dev2), start(dev2)]);
   await flow(inq.id, [comment(adminUser, '탈퇴 고객은 기본 조회 대상에서 제외되며, 옵션으로 포함 가능합니다.')]);
+  // 개선요청/문의도 조치 완료·Close 되어 Dashboard 처리 건수에 집계된다
+  const imp2 = await c.issueService.createImprovement(rep2, { target: '결함 목록', request: '목록에서 담당자 컬럼을 클릭하면 바로 필터되도록 개선', reason: '담당자별 확인이 잦음' });
+  await flow(imp2.id, [claim(dev1), prio(dev1, 'MINOR'), start(dev1), resolve(dev1, '담당자 컬럼 클릭 필터 적용', 'g55ab10', 'Release 1.2.4'), closeV(rep2, '개선 반영 확인')]);
+  const imp3 = await c.issueService.createImprovement(rep1, { target: '대시보드', request: 'Burn Up에 Closed 누적을 기본 표시', reason: '' });
+  await flow(imp3.id, [claim(dev2), start(dev2), resolve(dev2, '옵션 토글 제공으로 대체', '', 'Release 1.2.5')]);
+  const inq2 = await c.issueService.createInquiry(rep1, { target: '로그인 정책', question: '5회 실패 시 잠금 기준이 계정 단위인지 단말 단위인지 확인 요청' });
+  await flow(inq2.id, [claim(adminUser), start(adminUser), resolve(adminUser, '계정 단위 잠금이며 30분 후 자동 해제됩니다.'), closeA(adminUser, '문의자와 답변 내용 확인 후 종료 합의')]);
+  shift(imp2.id, 8);
+  shift(imp3.id, 4);
+  shift(inq2.id, 6);
 
   // 날짜 분산
   const daysAgo = [20, 18, 15, 14, 12, 11, 10, 9, 7, 6, 3, 1];

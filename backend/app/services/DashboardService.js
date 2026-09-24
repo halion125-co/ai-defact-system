@@ -21,7 +21,7 @@ class DashboardService {
 
   _base(query) {
     const q = { ...query };
-    if (!q.type) q.type = 'DEFECT';
+    if (!q.type) q.type = 'DEFECT'; // 기본 결함. 'ALL'이면 결함+개선요청+문의 통합
     if (q.dateFrom) q.createdFrom = q.dateFrom;
     if (q.dateTo) q.createdTo = q.dateTo;
     const operation = this.configService.getOperation();

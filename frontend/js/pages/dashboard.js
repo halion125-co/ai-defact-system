@@ -40,12 +40,12 @@ export async function renderDashboard(main, { query, navigate }) {
   const filterBar = h(
     'div',
     { class: 'filter-bar', style: { marginBottom: 0 } },
-    sel('type', Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })), type),
+    sel('type', [...Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })), { value: 'ALL', label: '전체 유형(결함+개선+문의)' }], type),
     sel('period', PERIODS, period),
     sel('environmentId', [{ value: '', label: '환경 전체' }, ...(store.project ? store.project.environments : []).map((e) => ({ value: e.id, label: e.displayName }))], filter.environmentId),
     sel('priority', [{ value: '', label: 'Priority 전체' }, ...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }], filter.priority)
   );
-  const typeLabel = TYPE_LABEL[type];
+  const typeLabel = type === 'ALL' ? 'Issue(전체 유형)' : TYPE_LABEL[type];
   const kpi1 = h('div', { class: 'kpi-row' });
   const kpi2 = h('div', { class: 'kpi-row six' });
   const dailyBody = h('div', {}, loadingState(4));
@@ -154,7 +154,7 @@ export async function renderDashboard(main, { query, navigate }) {
       .then((d) => {
         clear(statusBody).append(donutChart({ items: d.status.map((s) => ({ ...s, color: STATUS_COLORS[s.code] })), onClick: (it) => drill(it.drilldown) }));
         clear(prioBody).append(hBarList({ items: d.priority.map((p) => ({ ...p, color: PRIORITY_COLORS[p.code] })), onClick: (it) => drill(it.drilldown) }));
-        clear(envBody).append(type !== 'DEFECT' ? h('div', { class: 'empty' }, '발생 환경은 결함(Defect)에만 기록됩니다.', h('div', { class: 'small muted mt-8' }, '개선요청/문의는 환경 구분 없이 집계됩니다.')) : d.environment.length ? hBarList({ items: d.environment, color: '#126BFF', onClick: (it) => drill(it.drilldown) }) : h('div', { class: 'empty' }, '환경 데이터가 없습니다.'));
+        clear(envBody).append(type === 'IMPROVEMENT' || type === 'INQUIRY' ? h('div', { class: 'empty' }, '발생 환경은 결함(Defect)에만 기록됩니다.', h('div', { class: 'small muted mt-8' }, '개선요청/문의의 조치·Close 건수는 KPI, 일자별 차트, Burn Up에 동일하게 집계됩니다.')) : d.environment.length ? hBarList({ items: d.environment, color: '#126BFF', onClick: (it) => drill(it.drilldown) }) : h('div', { class: 'empty' }, '환경 데이터가 없습니다.'));
       })
       .catch((err) => clear(statusBody).append(errorBox(err, loadDist)));
   loadDist();

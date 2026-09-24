@@ -20,6 +20,8 @@ PASS 개선요청: 등록선이 조치선보다 항상 위(누적 등록 ≥ 누
 PASS 개선요청: 일자별 신규 막대 합 = 누적 등록
 PASS 개선요청: 렌더된 막대 수 = 값>0 항목 수
 PASS 개선요청: 상태 Donut 수치 = KPI
+PASS 개선요청: 처리 건수(누적 조치/Closed)가 0이 아니고 렌더값과 일치
+PASS 개선요청: 일자별 조치 완료 막대 합 = 누적 조치
 PASS 문의: KPI 전체 = API = 목록(Cancel 제외)
 PASS 문의: KPI 상태별 = 목록 상태별
 PASS 문의: KPI 라벨에 유형명 표시
@@ -31,6 +33,20 @@ PASS 문의: 등록선이 조치선보다 항상 위(누적 등록 ≥ 누적 �
 PASS 문의: 일자별 신규 막대 합 = 누적 등록
 PASS 문의: 렌더된 막대 수 = 값>0 항목 수
 PASS 문의: 상태 Donut 수치 = KPI
+PASS 문의: 처리 건수(누적 조치/Closed)가 0이 아니고 렌더값과 일치
+PASS 문의: 일자별 조치 완료 막대 합 = 누적 조치
+PASS Issue(전체 유형): KPI 전체 = API = 목록(Cancel 제외)
+PASS Issue(전체 유형): KPI 상태별 = 목록 상태별
+PASS Issue(전체 유형): KPI 라벨에 유형명 표시
+PASS Issue(전체 유형): 담당자 미지정 KPI = 목록
+PASS Issue(전체 유형): Burn Up 요약(누적 등록/조치/Gap/현재 미조치) = API
+PASS Issue(전체 유형): Burn Up 누적 등록 = 목록 건수, 누적 조치 = 최초 조치완료 보유 건수
+PASS Issue(전체 유형): Burn Up 선 2개, y좌표 단조(누적 증가 → y 감소)
+PASS Issue(전체 유형): 등록선이 조치선보다 항상 위(누적 등록 ≥ 누적 조치)
+PASS Issue(전체 유형): 일자별 신규 막대 합 = 누적 등록
+PASS Issue(전체 유형): 렌더된 막대 수 = 값>0 항목 수
+PASS Issue(전체 유형): 상태 Donut 수치 = KPI
+PASS 전체 유형: 누적 등록/조치 = 세 유형 합
 PASS 유형별 전체 합 = 전체 Issue(Cancel 제외)
 PASS Re-open된 DEF-0002: 최초 조치완료 보유(누적 조치 포함) + 현재 In Progress(현재 미조치 포함)
 PASS Burn Up hover 툴팁(날짜/누적 등록/누적 조치/Gap)

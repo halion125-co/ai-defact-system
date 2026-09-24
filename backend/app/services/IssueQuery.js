@@ -101,7 +101,7 @@ function textMatch(issue, q) {
 function applyFilters(issues, query = {}, ctx = {}) {
   const operation = ctx.operation || {};
   const nowMs = ctx.now || Date.now();
-  const types = csv(query.type);
+  const types = query.type === 'ALL' ? null : csv(query.type);
   const statuses = query.status === 'ALL' ? null : csv(query.status);
   const priorities = csv(query.priority);
   const envs = csv(query.environmentId);

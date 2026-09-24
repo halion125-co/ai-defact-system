@@ -235,3 +235,60 @@ test('관리자 설정(Priority 단계명·환경명·프로젝트명)이 목록
   await c.workflowService.start(dev2, ids.d1, { expectedRevision: c.repos.issueRepo.get(ids.d1).revision });
   assert.equal(c.repos.issueRepo.get(ids.d1).history.at(-1).actor.nameSnapshot, '홍길동(개발)');
 });
+
+test('개선요청/문의의 조치 완료·Close도 KPI/일자별/Burn Up 처리 건수에 집계되고, 전체 유형(ALL) 합산이 가능하다', async () => {
+  const c = makeContainer();
+  const { admin, reporter, dev } = await seed(c);
+  const W = c.workflowService;
+  const rev = (id) => c.repos.issueRepo.get(id).revision;
+  // 개선요청 1건 조치 완료 → Close(VERIFIED), 문의 1건 조치 완료(Done), 문의 1건 Close(AGREED)
+  const imp = (await c.issueService.createImprovement(reporter, { target: 'X', request: '개선 요청 처리 사례입니다' })).id;
+  await W.claim(dev, imp, { expectedRevision: rev(imp) });
+  await W.start(dev, imp, { expectedRevision: rev(imp) });
+  await W.resolve(dev, imp, { expectedRevision: rev(imp), resolution: { description: '반영 완료' } });
+  await W.close(reporter, imp, { expectedRevision: rev(imp), closeType: 'VERIFIED' });
+  const inq1 = (await c.issueService.createInquiry(reporter, { target: 'Y', question: '문의 처리 사례 하나' })).id;
+  await W.claim(dev, inq1, { expectedRevision: rev(inq1) });
+  await W.start(dev, inq1, { expectedRevision: rev(inq1) });
+  await W.resolve(dev, inq1, { expectedRevision: rev(inq1), resolution: { description: '답변 완료' } });
+  const inq2 = (await c.issueService.createInquiry(reporter, { target: 'Z', question: '문의 처리 사례 둘' })).id;
+  await W.claim(admin, inq2, { expectedRevision: rev(inq2) });
+  await W.start(admin, inq2, { expectedRevision: rev(inq2) });
+  await W.resolve(admin, inq2, { expectedRevision: rev(inq2), resolution: { description: '답변 완료' } });
+  await W.close(admin, inq2, { expectedRevision: rev(inq2), closeType: 'AGREED', comment: '문의자 확인 후 종료 합의' });
+
+  // IMPROVEMENT: 3건(기존 2 + 1) 중 조치 1, Closed 1
+  const si = c.dashboardService.summary({ type: 'IMPROVEMENT' });
+  assert.equal(si.total, 3);
+  assert.equal(si.status.closed, 1);
+  const bi = c.dashboardService.burnup({ type: 'IMPROVEMENT' });
+  assert.equal(bi.current.resolvedEver, 1, '개선요청 누적 조치');
+  assert.equal(bi.current.closedEver, 1, '개선요청 누적 Closed');
+  assert.equal(bi.items.at(-1).resolvedCumulative, 1);
+  const di = c.dashboardService.daily({ type: 'IMPROVEMENT' });
+  assert.equal(di.items.reduce((a, x) => a + x.resolved, 0), 1);
+  assert.equal(di.items.reduce((a, x) => a + x.closed, 0), 1);
+  // INQUIRY: 3건 중 Done 1, Closed 1 → 누적 조치 2, Closed 1, 재검증대기(Done) 1
+  const sq = c.dashboardService.summary({ type: 'INQUIRY' });
+  assert.equal(sq.total, 3);
+  assert.equal(sq.status.done, 1);
+  assert.equal(sq.status.closed, 1);
+  assert.equal(sq.attention.waitingVerification + sq.attention.waitingDeploy, 1);
+  const bq = c.dashboardService.burnup({ type: 'INQUIRY' });
+  assert.equal(bq.current.resolvedEver, 2, '문의 누적 조치(Done 도달 2건)');
+  assert.equal(bq.current.closedEver, 1);
+  assert.equal(bq.current.gap, 1);
+  // Drill-down 일치
+  assert.equal(c.issueService.list(admin, { type: 'INQUIRY', resolvedEver: 'true' }).total, 2);
+  assert.equal(c.issueService.list(admin, { type: 'IMPROVEMENT', status: 'CLOSED' }).total, 1);
+  // ALL: 결함 5 + 개선 3 + 문의 3 = 11, 누적 조치 = 3 + 1 + 2 = 6
+  const sa = c.dashboardService.summary({ type: 'ALL' });
+  assert.equal(sa.total, 11);
+  const ba = c.dashboardService.burnup({ type: 'ALL' });
+  assert.equal(ba.current.resolvedEver, 6);
+  assert.equal(ba.current.closedEver, 1 + 1 + 1);
+  assert.equal(c.issueService.list(admin, sa.drilldown.total).total, 11, 'ALL drilldown');
+  assert.equal(c.issueService.list(admin, sa.drilldown.closed).total, 3);
+  const da = c.dashboardService.distribution({ type: 'ALL' });
+  assert.equal(da.status.reduce((a, b) => a + b.count, 0), 11);
+});

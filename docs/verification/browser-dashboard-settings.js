@@ -34,8 +34,8 @@ const check = (name, ok, extra = '') => { results.push({ name, ok: !!ok, extra }
   await login(admin, 'admin');
 
   /* ================= 1. 유형별 Dashboard 렌더링 vs API vs 원본 목록 ================= */
-  const TYPE_LABEL = { DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' };
-  for (const type of ['DEFECT', 'IMPROVEMENT', 'INQUIRY']) {
+  const TYPE_LABEL = { DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의', ALL: 'Issue(전체 유형)' };
+  for (const type of ['DEFECT', 'IMPROVEMENT', 'INQUIRY', 'ALL']) {
     await go(admin, `#/dashboard?type=${type}`);
     await idle(admin);
     const kpis = await admin.$$eval('.kpi', (ks) => ks.map((k) => ({ label: k.querySelector('.label').textContent.trim(), value: k.querySelector('.value').textContent.trim() })));
@@ -68,6 +68,17 @@ const check = (name, ok, extra = '') => { results.push({ name, ok: !!ok, extra }
     // 상태 분포 = KPI
     const donut = await admin.$$eval('.dist-row', (rows) => rows.slice(0, 4).map((r) => r.querySelector('.n').textContent.trim()));
     check(`${TYPE_LABEL[type]}: 상태 Donut 수치 = KPI`, donut.join('/') === kpis.slice(1, 5).map((k) => k.value).join('/'), donut.join('/'));
+    if (type === 'IMPROVEMENT' || type === 'INQUIRY') {
+      check(`${TYPE_LABEL[type]}: 처리 건수(누적 조치/Closed)가 0이 아니고 렌더값과 일치`, b.current.resolvedEver > 0 && b.current.closedEver > 0 && sum['누적 조치'] === String(b.current.resolvedEver), `조치 ${b.current.resolvedEver} / Closed ${b.current.closedEver}`);
+      const dres = daily.items.reduce((a, x) => a + x.resolved, 0);
+      check(`${TYPE_LABEL[type]}: 일자별 조치 완료 막대 합 = 누적 조치`, dres === b.current.resolvedEver, `${dres}`);
+    }
+    if (type === 'ALL') {
+      const parts = await Promise.all(['DEFECT', 'IMPROVEMENT', 'INQUIRY'].map((t) => api(admin, `/api/dashboard/burnup?type=${t}`)));
+      const sumRes = parts.reduce((a, p) => a + p.current.resolvedEver, 0);
+      const sumTot = parts.reduce((a, p) => a + p.current.total, 0);
+      check('전체 유형: 누적 등록/조치 = 세 유형 합', b.current.total === sumTot && b.current.resolvedEver === sumRes, `${b.current.total}=${sumTot}, ${b.current.resolvedEver}=${sumRes}`);
+    }
     await shot(admin, `01-dashboard-${type}`);
   }
   // 유형 합계 = 전체

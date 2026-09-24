@@ -25,13 +25,14 @@ node backend/server.js
 
 - 최초 Quality Admin: 사번 `admin`으로 등록/시작하면 자동 승격된다. (`config/server.config.json`의 `bootstrapAdminEmployeeIds` 또는 환경변수 `DMS_BOOTSTRAP_ADMIN=사번1,사번2`)
 - 데모 seed 사용자: `admin`(김성훈, Quality Admin), `10001`(이영희), `10002`(박민수), `20001`(홍길동), `20002`(최지우)
+- 데모 seed 데이터: 결함 12건(Open/조치중/Done/배포/Closed/Re-open/Cancel), 개선요청 3건(조치 2·Closed 1), 문의 2건(Closed 1)
 
 ## 명령
 
 | 명령 | 설명 |
 |---|---|
 | `npm start` / `node backend/server.js` | 서버 실행 |
-| `npm test` | Unit / API 통합 / 동시성 / 파일 손상 / 보안 테스트 (56건) |
+| `npm test` | Unit / API 통합 / 동시성 / 파일 손상 / 보안 테스트 (57건) |
 | `npm run seed` | 데모 데이터 생성 (기존 Issue가 있으면 중단, `--force`로 강제) |
 | `npm run backup` | 수동 백업 (`backup/<YYYYMMDD_HHMMSS>/`) |
 | `npm run restore -- <백업명\|latest> --yes` | 백업 복구 (서비스 중지 후) |

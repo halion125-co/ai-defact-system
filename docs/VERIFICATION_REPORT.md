@@ -12,11 +12,11 @@
 | UX/보안 (API) | `backend/tests/ux-security.test.js` 11건 — 여러 줄·탭·CRLF·이모지·붙여넣기 왕복, 검색/숨김 누출, 직접 접근·세션·변조 | 11/11 통과 |
 | UX/보안 (브라우저) | `browser-ux-security.js` 43개 검사 — 붙여넣기 등록/조회/수정, XSS 렌더, 권한 없는 직접 URL/콘솔 API 호출, 권한 변경 즉시 반영 | 43/43 통과 |
 | Dashboard 일관성 (API) | `backend/tests/dashboard-consistency.test.js` 3건 — 원본 파일 독립 계산 vs Dashboard API vs Drill-down, 유형별/Burn Up/설정 반영 | 3/3 통과 |
-| Dashboard/설정 (브라우저) | `browser-dashboard-settings.js` 57개 검사 — 유형별 KPI/Burn Up/막대/Donut 렌더값 = API = 목록, Priority 단계명·환경명·프로젝트명·사용자명 변경 반영 | 57/57 통과 |
+| Dashboard/설정 (브라우저) | `browser-dashboard-settings.js` 73개 검사 — 유형별 KPI/Burn Up/막대/Donut 렌더값 = API = 목록, Priority 단계명·환경명·프로젝트명·사용자명 변경 반영 | 73/73 통과 |
 | 폐쇄망 | 정적 검사 + 브라우저 요청 모니터링 | 외부 요청 0건, JS 오류 0건 |
 | 반응형 | 1440 / 1280px | 가로 스크롤 없음 |
 
-실행: `npm test` (56건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
+실행: `npm test` (57건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
 
 ## PMD 기능별 검증 결과
 
@@ -159,7 +159,8 @@
 | Re-open된 결함: 누적 조치에 포함 유지 + 현재 미조치에도 포함(Gap과 현재 미조치가 다름을 툴팁으로 설명) | ✅ | |
 | 일자별 막대 합 = 누적 등록/조치/Closed, 렌더된 막대 수 = 값>0 항목 수, 막대·일자 Drill-down 건수 일치 | ✅ | |
 | 상태 Donut 수치 = KPI, Priority/환경 분포 합 = 전체 | ✅ | |
-| 개선요청/문의 Burn Up: 조치 없음 → 누적 조치 0, 등록 누적만 표시. 환경 분포는 결함 전용 안내 | ✅ | 01-dashboard-IMPROVEMENT.png |
+| **개선요청/문의도 조치 완료(Done)·Close가 KPI/일자별 막대/Burn Up 처리 건수에 동일하게 집계** (개선 3건 중 조치 2·Closed 1, 문의 3건 중 조치 1·Closed 1 = 렌더값 = API = 원본). 환경 분포만 결함 전용 안내 | ✅ | 01-dashboard-IMPROVEMENT.png, 01-dashboard-INQUIRY.png |
+| **전체 유형(결함+개선+문의) 통합 뷰**: 누적 등록/조치 = 세 유형 합, KPI/Drill-down 일치 | ✅ | 01-dashboard-ALL.png |
 | 기간 필터(최근 N일): createdAt 기준 집합으로 재계산 | ✅ | dashboard-consistency.test |
 | 신규 결함 등록 즉시 전체/Open KPI +1, 신규 환경 분포 1건 | ✅ | 09-dashboard-after-new.png |
 
@@ -192,6 +193,7 @@
 | F-14 | 재현절차 입력란에 여러 줄 붙여넣기 시 한 줄로 합쳐짐 | 줄마다 단계로 자동 분리 |
 | F-15 | 환경명 변경 시 Dashboard는 새 이름, 목록/상세는 등록 당시 스냅샷 이름을 보여 불일치 | 현재 표시는 설정의 최신 이름(삭제된 환경은 스냅샷), 이력 이벤트만 스냅샷 유지 |
 | F-16 | 개선요청/문의 Dashboard의 환경 분포가 전부 0건으로 표시 | 결함 전용 안내 문구로 대체 |
+| F-17 | 데모 seed에 개선요청/문의의 조치·Close 사례가 없어 처리 건수가 0으로 보임(집계 로직은 정상) | seed에 처리 사례 3건 추가, 유형 필터에 '전체 유형' 옵션 추가 |
 
 ## 미검증 / 제약
 
