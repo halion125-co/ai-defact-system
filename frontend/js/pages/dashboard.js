@@ -154,7 +154,7 @@ export async function renderDashboard(main, { query, navigate }) {
       .then((d) => {
         clear(statusBody).append(donutChart({ items: d.status.map((s) => ({ ...s, color: STATUS_COLORS[s.code] })), onClick: (it) => drill(it.drilldown) }));
         clear(prioBody).append(hBarList({ items: d.priority.map((p) => ({ ...p, color: PRIORITY_COLORS[p.code] })), onClick: (it) => drill(it.drilldown) }));
-        clear(envBody).append(d.environment.length ? hBarList({ items: d.environment, color: '#126BFF', onClick: (it) => drill(it.drilldown) }) : h('div', { class: 'empty' }, '환경 데이터가 없습니다.'));
+        clear(envBody).append(type !== 'DEFECT' ? h('div', { class: 'empty' }, '발생 환경은 결함(Defect)에만 기록됩니다.', h('div', { class: 'small muted mt-8' }, '개선요청/문의는 환경 구분 없이 집계됩니다.')) : d.environment.length ? hBarList({ items: d.environment, color: '#126BFF', onClick: (it) => drill(it.drilldown) }) : h('div', { class: 'empty' }, '환경 데이터가 없습니다.'));
       })
       .catch((err) => clear(statusBody).append(errorBox(err, loadDist)));
   loadDist();

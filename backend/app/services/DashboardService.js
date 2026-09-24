@@ -200,10 +200,11 @@ class DashboardService {
   attention(query) {
     const { issues, operation, filter } = this._base(query);
     const limit = Math.min(parseInt(query.limit, 10) || 5, 50);
+    const envNames = new Map(this.configService.getProject().environments.map((e) => [e.id, e.displayName]));
     const pick = (fn, sortKey = 'updatedAt') => {
       const list = issues.filter(fn);
       list.sort((a, b) => String(a[sortKey]).localeCompare(String(b[sortKey])));
-      return { count: list.length, sample: list.slice(0, limit).map(toSummary) };
+      return { count: list.length, sample: list.slice(0, limit).map((i) => toSummary(i, envNames)) };
     };
     return {
       staleIssueDays: operation.staleIssueDays,

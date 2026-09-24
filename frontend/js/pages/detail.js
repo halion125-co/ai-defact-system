@@ -14,6 +14,12 @@ const FIELD_LABEL = {
   target: '대상', request: '개선 내용', reason: '개선 필요 사유', question: '문의 내용', status: '상태', priority: 'Priority', assignee: '조치자', deployment: '배포',
 };
 
+/** 환경 표시: 설정의 현재 이름 우선(삭제된 환경은 스냅샷) */
+function envName(env) {
+  const cur = store.project && store.project.environments.find((e) => e.id === env.id);
+  return (cur && cur.displayName) || env.displayNameSnapshot || env.id;
+}
+
 function fieldValueText(k, v) {
   if (v == null) return '(없음)';
   if (k === 'reproductionSteps' && Array.isArray(v)) return v.map((s) => `${s.order}. ${s.text}`).join('\n');
@@ -90,7 +96,7 @@ export async function renderDetail(main, { params, navigate }) {
           { class: 'meta-grid' },
           h('div', {}, h('div', { class: 'k' }, '등록자'), h('div', { class: 'v' }, userLabel(issue.reporter))),
           h('div', {}, h('div', { class: 'k' }, '조치자'), h('div', { class: 'v' }, issue.assignee ? userLabel(issue.assignee) : h('span', { class: 'badge warn' }, '미지정 ⚠'))),
-          h('div', {}, h('div', { class: 'k' }, '환경'), h('div', { class: 'v' }, issue.environment ? issue.environment.displayNameSnapshot : '-')),
+          h('div', {}, h('div', { class: 'k' }, '환경'), h('div', { class: 'v' }, issue.environment ? envName(issue.environment) : '-')),
           h('div', {}, h('div', { class: 'k' }, '등록일'), h('div', { class: 'v' }, fmtDateTime(issue.createdAt), ' ', h('small', {}, `· 업데이트 ${fmtDateTime(issue.updatedAt)}`)))
         )
       )

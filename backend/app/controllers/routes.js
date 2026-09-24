@@ -174,7 +174,8 @@ function buildRoutes(c) {
       found.filter((i) => i.id.toLowerCase() !== q.toLowerCase()),
       '-updatedAt'
     );
-    return { body: { items: [...exact, ...rest].slice(0, Math.min(parseInt(ctx.query.limit, 10) || 10, 50)).map(toSummary), total: found.length } };
+    const envNames = new Map(c.configService.getProject().environments.map((e) => [e.id, e.displayName]));
+    return { body: { items: [...exact, ...rest].slice(0, Math.min(parseInt(ctx.query.limit, 10) || 10, 50)).map((i) => toSummary(i, envNames)), total: found.length } };
   });
 
   /* ---------- MY 카운트 ---------- */

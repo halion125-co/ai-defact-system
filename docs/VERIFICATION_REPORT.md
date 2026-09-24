@@ -11,10 +11,12 @@
 | 기능/UI/입력검증 (브라우저) | Edge headless + 4개 사용자 컨텍스트(Admin/Reporter/Assignee/타인) 실제 화면 조작 102개 검사 | 102/102 통과 |
 | UX/보안 (API) | `backend/tests/ux-security.test.js` 11건 — 여러 줄·탭·CRLF·이모지·붙여넣기 왕복, 검색/숨김 누출, 직접 접근·세션·변조 | 11/11 통과 |
 | UX/보안 (브라우저) | `browser-ux-security.js` 43개 검사 — 붙여넣기 등록/조회/수정, XSS 렌더, 권한 없는 직접 URL/콘솔 API 호출, 권한 변경 즉시 반영 | 43/43 통과 |
+| Dashboard 일관성 (API) | `backend/tests/dashboard-consistency.test.js` 3건 — 원본 파일 독립 계산 vs Dashboard API vs Drill-down, 유형별/Burn Up/설정 반영 | 3/3 통과 |
+| Dashboard/설정 (브라우저) | `browser-dashboard-settings.js` 57개 검사 — 유형별 KPI/Burn Up/막대/Donut 렌더값 = API = 목록, Priority 단계명·환경명·프로젝트명·사용자명 변경 반영 | 57/57 통과 |
 | 폐쇄망 | 정적 검사 + 브라우저 요청 모니터링 | 외부 요청 0건, JS 오류 0건 |
 | 반응형 | 1440 / 1280px | 가로 스크롤 없음 |
 
-실행: `npm test` (53건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
+실행: `npm test` (56건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
 
 ## PMD 기능별 검증 결과
 
@@ -147,6 +149,28 @@
 | 비활성화 → 기존 세션 즉시 로그아웃(화면 이동 시 로그인 화면), 재로그인 차단 안내, 비활성 사용자 배정 불가 | ✅ | 07-inactive-login.png |
 | 숨김 Comment 원문: 타인 화면 DOM 전체·API 응답(history 포함)·검색·Comment 카운트 어디에도 없음. Admin만 원문+사유, 파일 원본 보존 | ✅ | 08-hidden-comment-other.png |
 
+### 12. Dashboard: 결함/개선/문의 구분 집계와 Burn Up (사용자 요청 추가 검증)
+| 시나리오 | 결과 | 증적 |
+|---|---|---|
+| 유형 필터(결함/개선요청/문의)별 KPI 전체·상태별 = API = 목록(Cancel 제외), 라벨에 유형명 표시 | ✅ | screenshots-dashboard/01-dashboard-*.png |
+| 세 유형 합계 = 전체 Issue(Cancel 제외), Cancel은 "N건 별도"로 구분 | ✅ | dashboard-consistency.test |
+| Burn Up 요약(누적 등록/누적 조치/Gap/현재 미조치) 렌더값 = API = 원본 파일 독립 계산 | ✅ | 01, 02-burnup-tooltip.png |
+| Burn Up 선 2개(등록/조치) 단조 증가, 등록선 ≥ 조치선, 날짜별 누적 = 해당 일자까지 등록 합 | ✅ | SVG polyline 좌표 검사 |
+| Re-open된 결함: 누적 조치에 포함 유지 + 현재 미조치에도 포함(Gap과 현재 미조치가 다름을 툴팁으로 설명) | ✅ | |
+| 일자별 막대 합 = 누적 등록/조치/Closed, 렌더된 막대 수 = 값>0 항목 수, 막대·일자 Drill-down 건수 일치 | ✅ | |
+| 상태 Donut 수치 = KPI, Priority/환경 분포 합 = 전체 | ✅ | |
+| 개선요청/문의 Burn Up: 조치 없음 → 누적 조치 0, 등록 누적만 표시. 환경 분포는 결함 전용 안내 | ✅ | 01-dashboard-IMPROVEMENT.png |
+| 기간 필터(최근 N일): createdAt 기준 집합으로 재계산 | ✅ | dashboard-consistency.test |
+| 신규 결함 등록 즉시 전체/Open KPI +1, 신규 환경 분포 1건 | ✅ | 09-dashboard-after-new.png |
+
+### 13. 관리자 설정 값의 화면 반영 (사용자 요청 추가 검증)
+| 설정 | 반영 확인 | 증적 |
+|---|---|---|
+| Priority 단계명 변경(Critical→긴급(P1), Major→중요(P2), Minor→경미(P3)) + Minor 비활성 | Kanban 카드·목록·상세 배지·Timeline "경미(P3) → 중요(P2)"·Dashboard Priority 분포 라벨 모두 새 이름. 코드/기존 데이터 유지. 비활성 단계: 기존 Issue는 계속 표시·집계, Priority 변경 모달/목록 필터에서는 제외, 신규 지정 시 400 | 03, 05, 06, 07, 08 |
+| 환경명 변경(테스트계→테스트계(TB)) + 환경 추가(운영계) | 등록 화면 Select·Kanban·목록·상세·목록 필터·Dashboard 환경 분포(운영계 0건 → 등록 후 1건) 모두 새 이름. 이력 이벤트의 스냅샷은 등록 당시 이름 유지 | 05, 07, 08, 09 |
+| 프로젝트명/고객사명 변경 | 헤더(본인·다른 사용자), 로그인 화면 즉시 반영 | 05 |
+| 사용자 이름/소속 변경(홍길동→홍길동(개발)/플랫폼개발팀) | 헤더·사용자 목록·이후 Action의 Timeline actor는 새 이름. 기존 Issue의 등록자/조치자/과거 이력은 당시 스냅샷 유지(09 §5) | 04, 07 |
+
 ## 검증 중 발견·수정한 결함
 
 | # | 결함 | 수정 |
@@ -166,6 +190,8 @@
 | F-12 | 관리자가 권한 해제/비활성화해도 대상 사용자 브라우저는 캐시된 사용자 정보로 설정 메뉴 유지 | 화면 이동 시 세션 사용자 재확인, 변경 시 Shell 재구성 |
 | F-13 | 세션 없이 상세 URL 접근 후 로그인하면 Dashboard로 이동 | 요청 경로 기억 후 복귀 |
 | F-14 | 재현절차 입력란에 여러 줄 붙여넣기 시 한 줄로 합쳐짐 | 줄마다 단계로 자동 분리 |
+| F-15 | 환경명 변경 시 Dashboard는 새 이름, 목록/상세는 등록 당시 스냅샷 이름을 보여 불일치 | 현재 표시는 설정의 최신 이름(삭제된 환경은 스냅샷), 이력 이벤트만 스냅샷 유지 |
+| F-16 | 개선요청/문의 Dashboard의 환경 분포가 전부 0건으로 표시 | 결함 전용 안내 문구로 대체 |
 
 ## 미검증 / 제약
 

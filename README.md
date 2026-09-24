@@ -31,7 +31,7 @@ node backend/server.js
 | 명령 | 설명 |
 |---|---|
 | `npm start` / `node backend/server.js` | 서버 실행 |
-| `npm test` | Unit / API 통합 / 동시성 / 파일 손상 / 보안 테스트 (53건) |
+| `npm test` | Unit / API 통합 / 동시성 / 파일 손상 / 보안 테스트 (56건) |
 | `npm run seed` | 데모 데이터 생성 (기존 Issue가 있으면 중단, `--force`로 강제) |
 | `npm run backup` | 수동 백업 (`backup/<YYYYMMDD_HHMMSS>/`) |
 | `npm run restore -- <백업명\|latest> --yes` | 백업 복구 (서비스 중지 후) |

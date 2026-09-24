@@ -29,6 +29,7 @@
 | D-21 | Audit 실패 | - | Issue 저장 성공 후 Audit append 실패 시 Issue 저장을 되돌리지 않고 error 로그에 기록. (History는 Issue 파일에도 있으므로 유실 없음) |
 | D-23 | 텍스트 정규화 | 01 §22 | 제어문자 제거, CR/CRLF→LF, 줄 끝 공백 제거, 3줄 이상 연속 빈 줄→2줄, 앞뒤 trim. 단일행 필드는 개행→공백. HTML은 escape하지 않고 원문 저장, 렌더링은 textContent. |
 | D-24 | 숨김 Comment 마스킹 범위 | 04 §9 | 비관리자 응답에서 comments[].body/attachments/hiddenReason + history의 COMMENTED.comment, COMMENT_HIDDEN.originalBody/사유를 제거. 검색/Comment 카운트도 제외. Admin 응답과 파일/Audit은 원문 유지. |
+| D-25 | 환경/사용자 이름 변경 시 표시 | 09 §5 스냅샷 | 환경: 목록/상세/Dashboard는 설정의 **현재 이름**(삭제된 환경은 스냅샷), 이력 이벤트는 스냅샷. 사용자: 등록자/조치자/이력 모두 **스냅샷 유지**(이름/소속 변경은 이후 Action부터 반영). |
 | D-22 | 로그 | 07 §16 | access 로그는 requestId/method/path/status/elapsed/errorCode만 기록. Comment 본문/첨부 미기록. |
 
 ## TODO (운영 전 확인)

@@ -195,7 +195,13 @@ function sortIssues(issues, sort = '-updatedAt') {
   return arr;
 }
 
-function toSummary(issue) {
+/** 환경 표시명: 설정의 현재 이름 우선, 없으면(삭제됨) 등록 당시 스냅샷 */
+function envDisplayName(issue, envNames) {
+  if (!issue.environment) return null;
+  return (envNames && envNames.get(issue.environment.id)) || issue.environment.displayNameSnapshot || issue.environment.id;
+}
+
+function toSummary(issue, envNames) {
   return {
     id: issue.id,
     type: issue.type,
@@ -203,7 +209,7 @@ function toSummary(issue) {
     status: issue.status,
     priority: issue.priority,
     environmentId: issue.environment ? issue.environment.id : null,
-    environment: issue.environment ? issue.environment.displayNameSnapshot : null,
+    environment: envDisplayName(issue, envNames),
     reporterId: issue.reporter ? issue.reporter.userId : null,
     reporter: issue.reporter ? issue.reporter.nameSnapshot : null,
     reporterTeam: issue.reporter ? issue.reporter.teamSnapshot : null,
@@ -225,6 +231,7 @@ module.exports = {
   applyFilters,
   sortIssues,
   toSummary,
+  envDisplayName,
   isUnresolved,
   isStale,
   isReopened,

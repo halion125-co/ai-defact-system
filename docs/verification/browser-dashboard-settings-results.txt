@@ -1,0 +1,57 @@
+PASS 결함: KPI 전체 = API = 목록(Cancel 제외)
+PASS 결함: KPI 상태별 = 목록 상태별
+PASS 결함: KPI 라벨에 유형명 표시
+PASS 결함: 담당자 미지정 KPI = 목록
+PASS 결함: Burn Up 요약(누적 등록/조치/Gap/현재 미조치) = API
+PASS 결함: Burn Up 누적 등록 = 목록 건수, 누적 조치 = 최초 조치완료 보유 건수
+PASS 결함: Burn Up 선 2개, y좌표 단조(누적 증가 → y 감소)
+PASS 결함: 등록선이 조치선보다 항상 위(누적 등록 ≥ 누적 조치)
+PASS 결함: 일자별 신규 막대 합 = 누적 등록
+PASS 결함: 렌더된 막대 수 = 값>0 항목 수
+PASS 결함: 상태 Donut 수치 = KPI
+PASS 개선요청: KPI 전체 = API = 목록(Cancel 제외)
+PASS 개선요청: KPI 상태별 = 목록 상태별
+PASS 개선요청: KPI 라벨에 유형명 표시
+PASS 개선요청: 담당자 미지정 KPI = 목록
+PASS 개선요청: Burn Up 요약(누적 등록/조치/Gap/현재 미조치) = API
+PASS 개선요청: Burn Up 누적 등록 = 목록 건수, 누적 조치 = 최초 조치완료 보유 건수
+PASS 개선요청: Burn Up 선 2개, y좌표 단조(누적 증가 → y 감소)
+PASS 개선요청: 등록선이 조치선보다 항상 위(누적 등록 ≥ 누적 조치)
+PASS 개선요청: 일자별 신규 막대 합 = 누적 등록
+PASS 개선요청: 렌더된 막대 수 = 값>0 항목 수
+PASS 개선요청: 상태 Donut 수치 = KPI
+PASS 문의: KPI 전체 = API = 목록(Cancel 제외)
+PASS 문의: KPI 상태별 = 목록 상태별
+PASS 문의: KPI 라벨에 유형명 표시
+PASS 문의: 담당자 미지정 KPI = 목록
+PASS 문의: Burn Up 요약(누적 등록/조치/Gap/현재 미조치) = API
+PASS 문의: Burn Up 누적 등록 = 목록 건수, 누적 조치 = 최초 조치완료 보유 건수
+PASS 문의: Burn Up 선 2개, y좌표 단조(누적 증가 → y 감소)
+PASS 문의: 등록선이 조치선보다 항상 위(누적 등록 ≥ 누적 조치)
+PASS 문의: 일자별 신규 막대 합 = 누적 등록
+PASS 문의: 렌더된 막대 수 = 값>0 항목 수
+PASS 문의: 상태 Donut 수치 = KPI
+PASS 유형별 전체 합 = 전체 Issue(Cancel 제외)
+PASS Re-open된 DEF-0002: 최초 조치완료 보유(누적 조치 포함) + 현재 In Progress(현재 미조치 포함)
+PASS Burn Up hover 툴팁(날짜/누적 등록/누적 조치/Gap)
+PASS Priority 저장 성공 토스트
+PASS 환경명 변경 + 추가 반영
+PASS 프로젝트명 변경 → 헤더 즉시 반영
+PASS 사용자 이름/소속 변경
+PASS 로그인 화면에 변경된 고객사/프로젝트명
+PASS 헤더에 변경된 프로젝트명(다른 사용자)
+PASS Kanban 카드에 새 Priority 단계명(긴급/중요/경미)
+PASS Kanban 카드에 변경된 환경명
+PASS 목록에 새 Priority 단계명 + 환경명
+PASS 목록 필터: Priority 옵션에 비활성(경미) 제외, 환경 옵션에 운영계 포함
+PASS 상세: 비활성 단계 값 보유 Issue는 새 이름(경미(P3))으로 표시
+PASS 상세: 환경 새 이름 표시
+PASS 상세: 변경된 사용자 이름은 기존 스냅샷 유지(홍길동), 헤더는 새 이름
+PASS Priority 변경 모달: 새 단계명 + 설명, 비활성(경미) 제외
+PASS Timeline: 새 Action의 actor는 변경된 이름/소속, Priority 변경 표시는 새 단계명(경미(P3) → 중요(P2))
+PASS Dashboard Priority 분포: 새 단계명 + 비활성 단계도 기존 건수 표시
+PASS Dashboard 환경 분포: 변경된 환경명 + 신규 환경(운영계 0건)
+PASS 환경 분포 건수 = 목록 필터 건수
+PASS 등록 화면 환경 Select: 테스트계(TB) + 운영계
+PASS 신규 환경으로 등록한 결함이 Dashboard 환경 분포에 반영(운영계 1건)
+PASS 신규 결함 등록 후 전체/Open KPI +1

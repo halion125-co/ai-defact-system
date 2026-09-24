@@ -162,7 +162,8 @@ class IssueService {
     const size = Math.min(Math.max(parseInt(query.size, 10) || 50, 1), 500);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const start = (page - 1) * size;
-    const items = sorted.slice(start, start + size).map(toSummary);
+    const envNames = new Map(this.configService.getProject().environments.map((e) => [e.id, e.displayName]));
+    const items = sorted.slice(start, start + size).map((i) => toSummary(i, envNames));
     return { items, page, size, total: sorted.length };
   }
 
