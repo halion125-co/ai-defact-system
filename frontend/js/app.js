@@ -56,7 +56,7 @@ function renderShell() {
     nav.append(h('div', { class: 'nav-section' }, 'Quality Admin'));
     nav.append(h('a', { class: `nav-item${cur.path === '/settings' ? ' active' : ''}`, href: '#/settings' }, h('span', { class: 'ico' }, '⚙'), '설정'));
   }
-  const foot = h('div', { class: 'sidebar-foot' }, h('img', { src: '/assets/kt-logo.svg', alt: 'KT', width: 36 }), h('span', {}, 'v1.0'));
+  const foot = h('div', { class: 'sidebar-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT', width: 36 }), h('span', {}, 'v1.0'));
   sidebar.append(brand, nav, foot);
 
   // Header

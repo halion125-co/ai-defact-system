@@ -118,7 +118,7 @@ button { cursor: pointer; }
 .login-card .user-pick .avatar { background: var(--cyan); color: var(--navy); }
 .login-card .error { color: #FFB4AE; }
 .login-foot { position: absolute; bottom: 20px; left: 24px; display: flex; align-items: center; gap: 10px; color: #9DB4D3; font-size: 12px; }
-.login-foot img { width: 40px; opacity: 0.95; }
+.login-foot img { width: 40px; height: auto; opacity: 0.95; }
 
 /* ---------- App Shell ---------- */
 .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; grid-template-rows: var(--header-h) 1fr; min-height: 100vh; }

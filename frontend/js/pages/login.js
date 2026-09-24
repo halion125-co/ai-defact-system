@@ -134,7 +134,7 @@ export async function renderLogin(root, { onLogin }) {
     h('div', { class: 'mt-24 small', style: { color: '#9DB4D3' } }, `${p.customerName || ''} ${p.customerName ? '|' : ''} ${p.projectName || ''}`)
   );
   clear(root).append(
-    h('div', { class: 'login' }, h('div', { class: 'login-wrap' }, brand, card), h('div', { class: 'login-foot' }, h('img', { src: '/assets/kt-logo.svg', alt: 'KT' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')))
+    h('div', { class: 'login' }, h('div', { class: 'login-wrap' }, brand, card), h('div', { class: 'login-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')))
   );
   viewStart();
 }

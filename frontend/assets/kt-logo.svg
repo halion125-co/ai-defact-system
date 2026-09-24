@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 60" width="120" height="60" role="img" aria-label="KT">
-  <!-- TODO(DECISION): 운영 배포 시 KT 공식 로고 파일(SVG/PNG)로 교체. 폐쇄망 원칙에 따라 로컬 자산으로 포함한다. -->
-  <text x="60" y="46" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="46" fill="#E4002B" letter-spacing="-2">kt</text>
-</svg>

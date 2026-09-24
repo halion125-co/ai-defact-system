@@ -32,13 +32,14 @@
 | D-25 | 환경/사용자 이름 변경 시 표시 | 09 §5 스냅샷 | 환경: 목록/상세/Dashboard는 설정의 **현재 이름**(삭제된 환경은 스냅샷), 이력 이벤트는 스냅샷. 사용자: 등록자/조치자/이력 모두 **스냅샷 유지**(이름/소속 변경은 이후 Action부터 반영). |
 | D-26 | Dashboard 유형 필터 | 01 §6.2 기본 Defect | 결함/개선요청/문의 각각 + **전체 유형(ALL)** 통합 뷰 제공. 조치 완료(firstResolvedAt)·Close(firstClosedAt) 집계는 유형에 무관하게 동일 규칙. 환경 분포만 결함 전용. |
 | D-27 | 로그인 전 사용자 선택 방식 | 07 §3, 01 §4 "비밀번호 없는 사번 기반 식별" | 초기 화면의 "등록 사용자 선택" **드롭다운을 제거**했다. 사번을 몰라도 이름 목록에서 아무나 클릭해 로그인할 수 있었던 것은 사번 기반 식별 원칙을 무력화하는 문제였다. `/api/users/recent`는 이제 요청한 사번 1건의 표시 정보만 반환하며(브라우저가 기억한 직전 사용자 카드용), 파라미터 없이 호출하거나 존재/비활성 사번을 넣으면 빈 배열을 반환해 사번 존재 여부도 추측할 수 없다. 등록된 전체 사용자 목록은 Admin 전용 설정 화면(`GET /api/users`, 인증 필요)에서만 조회 가능하다. "사용자 변경"은 본인 사번을 다시 입력해야만 전환된다. |
+| D-28 | KT 로고 | UI 가이드 §9 "Sidebar 좌측 하단, 32~40px, 원본 Aspect Ratio 유지, 임의 색상 변경 금지" | 사용자가 제공한 공식 로고(검정 배경 PNG)를 alpha 채널로 배경 제거해 `frontend/assets/kt-logo.png`로 교체. 사이드바 footer(36px 폭, height:auto)와 로그인 화면 footer(40px 폭)에서 원본 비율(1.23:1)을 유지한 채 다크 네이비 배경 위에 흰 kt 글자 + 빨간 리본이 그대로 보임. 색상 변경 없음. |
 | D-22 | 로그 | 07 §16 | access 로그는 requestId/method/path/status/elapsed/errorCode만 기록. Comment 본문/첨부 미기록. |
 
 ## TODO (운영 전 확인)
 
 | # | 항목 | 내용 |
 |---|---|---|
-| T-01 | KT 로고 | `frontend/assets/kt-logo.svg`는 텍스트 placeholder. 공식 로고 파일(SVG/PNG)로 교체 필요(Aspect ratio 유지, 32~40px). |
+
 | T-02 | 폰트 | 시스템 폰트 fallback(Malgun Gothic 등). Pretendard/Noto Sans KR 사용 시 폰트 파일을 `frontend/assets/fonts/`에 포함하고 `app.css`에 `@font-face` 추가. |
 | T-03 | HTTPS | 내부 인증서 사용 시 리버스 프록시(예: 내부 Nginx/IIS) 또는 `https.createServer`로 확장. 현재는 HTTP. Secure cookie는 TLS 소켓 감지 시 자동. |
 | T-04 | 다중 프로세스 | 단일 Node 프로세스가 data 디렉터리를 독점하는 전제. 다중 인스턴스 운영은 지원하지 않음(파일 lock은 프로세스 내 mutex). |
