@@ -31,6 +31,7 @@
 | D-24 | 숨김 Comment 마스킹 범위 | 04 §9 | 비관리자 응답에서 comments[].body/attachments/hiddenReason + history의 COMMENTED.comment, COMMENT_HIDDEN.originalBody/사유를 제거. 검색/Comment 카운트도 제외. Admin 응답과 파일/Audit은 원문 유지. |
 | D-25 | 환경/사용자 이름 변경 시 표시 | 09 §5 스냅샷 | 환경: 목록/상세/Dashboard는 설정의 **현재 이름**(삭제된 환경은 스냅샷), 이력 이벤트는 스냅샷. 사용자: 등록자/조치자/이력 모두 **스냅샷 유지**(이름/소속 변경은 이후 Action부터 반영). |
 | D-26 | Dashboard 유형 필터 | 01 §6.2 기본 Defect | 결함/개선요청/문의 각각 + **전체 유형(ALL)** 통합 뷰 제공. 조치 완료(firstResolvedAt)·Close(firstClosedAt) 집계는 유형에 무관하게 동일 규칙. 환경 분포만 결함 전용. |
+| D-27 | 로그인 전 사용자 선택 방식 | 07 §3, 01 §4 "비밀번호 없는 사번 기반 식별" | 초기 화면의 "등록 사용자 선택" **드롭다운을 제거**했다. 사번을 몰라도 이름 목록에서 아무나 클릭해 로그인할 수 있었던 것은 사번 기반 식별 원칙을 무력화하는 문제였다. `/api/users/recent`는 이제 요청한 사번 1건의 표시 정보만 반환하며(브라우저가 기억한 직전 사용자 카드용), 파라미터 없이 호출하거나 존재/비활성 사번을 넣으면 빈 배열을 반환해 사번 존재 여부도 추측할 수 없다. 등록된 전체 사용자 목록은 Admin 전용 설정 화면(`GET /api/users`, 인증 필요)에서만 조회 가능하다. "사용자 변경"은 본인 사번을 다시 입력해야만 전환된다. |
 | D-22 | 로그 | 07 §16 | access 로그는 requestId/method/path/status/elapsed/errorCode만 기록. Comment 본문/첨부 미기록. |
 
 ## TODO (운영 전 확인)

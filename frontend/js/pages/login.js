@@ -7,14 +7,17 @@ import { h, clear, setBusy, errorMessage, initials } from '../ui.js';
 
 export async function renderLogin(root, { onLogin }) {
   const p = store.project || {};
-  let recent = [];
-  try {
-    recent = (await api.users.recent()).users;
-  } catch {
-    recent = [];
-  }
   const last = store.lastEmployeeId();
-  const lastUser = last ? recent.find((u) => u.employeeId === last) : null;
+  let lastUser = null;
+  if (last) {
+    try {
+      // 이 브라우저가 마지막으로 사용한 사번 "본인" 정보만 조회한다. 타인 목록은 요청하지 않는다.
+      const { users } = await api.users.recent(last);
+      lastUser = users[0] || null;
+    } catch {
+      lastUser = null;
+    }
+  }
 
   const card = h('div', { class: 'login-card' });
   const errEl = h('div', { class: 'error small mt-8 hidden' });
@@ -57,14 +60,13 @@ export async function renderLogin(root, { onLogin }) {
 
   function viewChange(initial = false) {
     clear(card);
-    card.append(h('h2', {}, '사용자 선택'), h('p', { class: 'hint' }, '등록된 사용자를 선택하거나 사번을 입력해주세요.'));
-    const select = h('select', { class: 'input' }, h('option', { value: '' }, '등록 사용자 선택…'));
-    for (const u of recent) select.append(h('option', { value: u.employeeId }, `${u.name} (${u.team})${u.isQualityAdmin ? ' · Admin' : ''}`));
+    // 본인 사번을 직접 입력해야만 진입할 수 있다. 등록된 타 사용자 이름을 목록으로 노출하지 않는다
+    // (공용 PC에서 사번을 모르는 채로 다른 사람 이름을 클릭해 접근하는 것을 방지).
+    card.append(h('h2', {}, '사용자 선택'), h('p', { class: 'hint' }, '본인 사번을 입력해주세요.'));
     const input = h('input', { class: 'input', placeholder: '사번 입력', autocomplete: 'off' });
-    select.addEventListener('change', () => (input.value = select.value));
     const btn = h('button', { class: 'btn btn-primary btn-block btn-lg mt-8', onClick: (e) => (input.value.trim() ? start(input.value.trim(), e.currentTarget) : showErr('사번을 입력해주세요.')) }, '시작');
     input.addEventListener('keydown', (e) => e.key === 'Enter' && btn.click());
-    card.append(h('div', { class: 'field' }, h('label', {}, '등록 사용자'), select), h('div', { class: 'field' }, h('label', {}, '사번'), input), btn, errEl);
+    card.append(h('div', { class: 'field' }, h('label', {}, '사번'), input), btn, errEl);
     if (!initial && lastUser) card.append(h('button', { class: 'btn btn-ghost btn-block mt-8', style: { color: '#B8CBE6' }, onClick: viewStart }, '← 돌아가기'));
     card.append(h('div', { class: 'divider' }), h('div', { class: 'small', style: { color: '#B8CBE6', marginBottom: '8px' } }, '처음 사용하시나요?'), h('button', { class: 'btn btn-secondary btn-block', onClick: viewRegister }, '신규 사용자 등록'));
     setTimeout(() => input.focus(), 0);

@@ -16,7 +16,7 @@
 | 폐쇄망 | 정적 검사 + 브라우저 요청 모니터링 | 외부 요청 0건, JS 오류 0건 |
 | 반응형 | 1440 / 1280px | 가로 스크롤 없음 |
 
-실행: `npm test` (57건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
+실행: `npm test` (58건), 브라우저 스크립트는 [browser-verification.js](verification/browser-verification.js) (개발 PC 전용, puppeteer-core + Edge), 결과 [browser-results.txt](verification/browser-results.txt), 증적 [screenshots/](verification/screenshots/).
 
 ## PMD 기능별 검증 결과
 
@@ -172,6 +172,15 @@
 | 프로젝트명/고객사명 변경 | 헤더(본인·다른 사용자), 로그인 화면 즉시 반영 | 05 |
 | 사용자 이름/소속 변경(홍길동→홍길동(개발)/플랫폼개발팀) | 헤더·사용자 목록·이후 Action의 Timeline actor는 새 이름. 기존 Issue의 등록자/조치자/과거 이력은 당시 스냅샷 유지(09 §5) | 04, 07 |
 
+### 14. 로그인 전 사용자 선택 방식 (사용자 피드백에 따른 보안 개선)
+| 항목 | 이전 | 개선 |
+|---|---|---|
+| 사용자 변경 화면 | 등록된 전체 사용자 이름/소속을 드롭다운으로 노출, 클릭만으로 로그인 | 드롭다운 제거, **본인 사번 직접 입력만** 허용 |
+| `/api/users/recent` | 인증 없이 전체 활성 사용자 목록(사번 포함) 반환 | 요청한 사번 1건의 표시 정보만 반환. 파라미터 없음/존재하지 않음/비활성 사번은 모두 빈 배열(사번 존재 여부 추측 방지) |
+| "이 사용자로 시작" 카드 | 그대로 유지 | 그대로 유지(본인 PC 편의는 보존) |
+
+브라우저 확인: 로그인 화면 캡처(login-04-change-screen.png)에서 드롭다운 없이 사번 입력란만 표시됨을 확인. `ux-security.test.js`에 회귀 테스트 추가.
+
 ## 검증 중 발견·수정한 결함
 
 | # | 결함 | 수정 |
@@ -194,6 +203,7 @@
 | F-15 | 환경명 변경 시 Dashboard는 새 이름, 목록/상세는 등록 당시 스냅샷 이름을 보여 불일치 | 현재 표시는 설정의 최신 이름(삭제된 환경은 스냅샷), 이력 이벤트만 스냅샷 유지 |
 | F-16 | 개선요청/문의 Dashboard의 환경 분포가 전부 0건으로 표시 | 결함 전용 안내 문구로 대체 |
 | F-17 | 데모 seed에 개선요청/문의의 조치·Close 사례가 없어 처리 건수가 0으로 보임(집계 로직은 정상) | seed에 처리 사례 3건 추가, 유형 필터에 '전체 유형' 옵션 추가 |
+| F-18 | 로그인 전 화면에서 사번 없이 등록된 타 사용자 이름을 드롭다운으로 클릭해 로그인 가능(사번 기반 식별 원칙 위반) | 드롭다운 제거, 사번 직접 입력만 허용. `/api/users/recent`를 요청 사번 1건 조회로 축소 |
 
 ## 미검증 / 제약
 

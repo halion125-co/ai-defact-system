@@ -256,3 +256,27 @@ test('숨김 Comment·삭제 첨부는 비관리자에게 어떤 경로로도 �
   assert.ok(JSON.stringify((await admin.get(`/api/issues/${id}`)).body).includes('000000-0000000'));
   assert.equal(c.repos.issueRepo.get(id).comments[0].body, '주민번호 000000-0000000');
 });
+
+test('로그인 전 화면: /api/users/recent는 요청한 사번 1건만 반환하고 타 사용자 목록을 노출하지 않는다', async (t) => {
+  const { srv, admin, dev } = await setup();
+  t.after(() => srv.close());
+  const anon = client(srv.base);
+  // employeeId 없이 호출 → 빈 목록(과거처럼 전체 목록을 내려주지 않음)
+  let r = await anon.get('/api/users/recent');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.users, []);
+  // 존재하는 본인 사번 → 그 1건만
+  r = await anon.get('/api/users/recent?employeeId=10001');
+  assert.equal(r.body.users.length, 1);
+  assert.equal(r.body.users[0].employeeId, '10001');
+  assert.equal(r.body.users[0].name, '이영희');
+  // 모르는 사번을 넣으면 아무 정보도 주지 않는다(사번 존재 여부 추측 방지)
+  r = await anon.get('/api/users/recent?employeeId=99999999');
+  assert.deepEqual(r.body.users, []);
+  // 비활성 사용자는 조회되지 않음
+  const devId = (await admin.get('/api/users?q=20001')).body.users[0].userId;
+  await admin.patch(`/api/users/${devId}`, { active: false });
+  r = await anon.get('/api/users/recent?employeeId=20001');
+  assert.deepEqual(r.body.users, []);
+  void dev;
+});

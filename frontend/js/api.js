@@ -74,7 +74,8 @@ export const api = {
     end: () => request('POST', '/api/session/end', { body: {} }),
   },
   users: {
-    recent: () => request('GET', '/api/users/recent'),
+    /** 브라우저가 기억한 사번 1개의 표시 정보만 조회(직전 사용자 카드용). employeeId 없으면 빈 목록. */
+    recent: (employeeId) => request('GET', '/api/users/recent' + qs({ employeeId })),
     register: (data) => request('POST', '/api/users', { body: data }),
     list: (params) => request('GET', '/api/users' + qs(params)),
     update: (userId, data) => request('PATCH', `/api/users/${userId}`, { body: data }),

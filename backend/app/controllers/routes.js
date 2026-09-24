@@ -64,10 +64,14 @@ function buildRoutes(c) {
   );
   r.get(
     '/api/users/recent',
-    async () => {
-      // 사용자 시작 화면: 등록 사용자 선택 목록(사번/이름/소속만)
-      const users = c.userService.list({ active: 'true' }).map((u) => ({ employeeId: u.employeeId, name: u.name, team: u.team, isQualityAdmin: u.isQualityAdmin }));
-      return { body: { users } };
+    async (ctx) => {
+      // 사용자 시작 화면: 브라우저가 기억한 "직전 사용자 1명"의 표시용 정보만 반환한다.
+      // 인증 전 화면에서 다른 사용자 이름/사번 목록 전체를 노출하지 않는다(사번 없이 타인 계정 진입 방지).
+      const employeeId = String(ctx.query.employeeId || '').trim();
+      if (!employeeId) return { body: { users: [] } };
+      const user = c.repos.userRepo.findByEmployeeId(employeeId);
+      if (!user || user.active === false) return { body: { users: [] } };
+      return { body: { users: [{ employeeId: user.employeeId, name: user.name, team: user.team, isQualityAdmin: user.isQualityAdmin }] } };
     },
     PUBLIC
   );

@@ -1,6 +1,6 @@
 # MVP Release Gate 검증 결과 (2026-09-24)
 
-`readme/03_DEV_TASK_BREAKDOWN_v1.0.md` §21 및 `readme/08_TEST_PLAN_ACCEPTANCE_v1.0.md` 기준. 자동 테스트는 `npm test`(57건), 브라우저 검증은 Edge headless 시나리오(개발 PC)로 수행했다.
+`readme/03_DEV_TASK_BREAKDOWN_v1.0.md` §21 및 `readme/08_TEST_PLAN_ACCEPTANCE_v1.0.md` 기준. 자동 테스트는 `npm test`(58건), 브라우저 검증은 Edge headless 시나리오(개발 PC)로 수행했다.
 
 ## 기능
 
