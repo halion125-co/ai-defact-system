@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { makeContainer, DEFECT_BODY, startServer, client } = require('./helpers');
+const { makeContainer, DEFECT_BODY, startServer, client, promoteToAdmin } = require('./helpers');
 
 async function setup() {
   const c = makeContainer();
@@ -14,6 +14,7 @@ async function setup() {
   const dev = client(srv.base);
   const other = client(srv.base);
   assert.equal((await admin.post('/api/users', { employeeId: 'admin', name: '김성훈', team: '품질팀' })).status, 201);
+  await promoteToAdmin(c, 'admin');
   assert.equal((await rep.post('/api/users', { employeeId: '10001', name: '이영희', team: '업무팀' })).status, 201);
   assert.equal((await dev.post('/api/users', { employeeId: '20001', name: '홍길동', team: '개발팀' })).status, 201);
   assert.equal((await other.post('/api/users', { employeeId: '30001', name: '박민수', team: '테스트팀' })).status, 201);

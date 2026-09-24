@@ -166,6 +166,11 @@ route('/start', async (ctx) => {
   clear(app);
   await renderLogin(app, { ...ctx, navigate, onLogin: afterLogin });
 });
+route('/admin-login', async (ctx) => {
+  shellEl = null;
+  clear(app);
+  await renderLogin(app, { ...ctx, navigate, onLogin: afterLogin, admin: true });
+});
 route('/', async () => navigate('/dashboard', {}, { replace: true }));
 route('/dashboard', mount(renderDashboard));
 route('/issues', async () => navigate('/issues/kanban', {}, { replace: true }));
@@ -180,7 +185,7 @@ setNotFound(mount(async (main) => main.append(emptyState('페이지를 찾을 �
 
 const PENDING_KEY = 'dms.pendingRoute';
 setBeforeEach(async ({ path, query }) => {
-  if (path === '/start') return null;
+  if (path === '/start' || path === '/admin-login') return null;
   // 화면 이동 시 세션 사용자 재확인: 비활성화/권한 변경이 재로그인 없이 즉시 반영된다.
   if (store.user) {
     try {

@@ -30,7 +30,9 @@ async function main() {
     return c.userService.register({ employeeId, name, team });
   };
   const admin = await mk('admin', '김성훈', 'AX리스크/품질팀');
-  const adminUser = await c.userService.findForSession('admin');
+  // 데모 seed 전용: 실제 서비스에서는 Admin 로그인(#/admin-login)으로만 Quality Admin 승격이 가능하다.
+  let adminUser = admin;
+  if (!adminUser.isQualityAdmin) adminUser = c.userService.publicUser(await c.repos.userRepo.update(admin.userId, { isQualityAdmin: true }));
   const rep1 = await mk('10001', '이영희', '업무팀');
   const rep2 = await mk('10002', '박민수', '테스트팀');
   const dev1 = await mk('20001', '홍길동', '개발팀');

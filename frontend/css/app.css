@@ -131,6 +131,8 @@ button { cursor: pointer; }
 .login-foot .brand-mark { display: flex; align-items: center; gap: 14px; }
 .login-foot img { width: 34px; height: auto; opacity: 0.95; }
 .login-foot .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.2); }
+.login-foot .admin-entry { color: rgba(143,163,196,0.55); text-decoration: none; }
+.login-foot .admin-entry:hover { color: #8FA3C4; text-decoration: underline; }
 @media (max-width: 1100px) {
   .login-wrap { grid-template-columns: 1fr; }
   .login-card { justify-self: stretch; max-width: none; }

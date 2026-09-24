@@ -5,7 +5,8 @@ import { api } from '../api.js';
 import { store } from '../store.js';
 import { h, clear, setBusy, errorMessage, initials } from '../ui.js';
 
-export async function renderLogin(root, { onLogin }) {
+export async function renderLogin(root, { onLogin, admin = false }) {
+  if (admin) return renderAdminLogin(root, { onLogin });
   const p = store.project || {};
   const last = store.lastEmployeeId();
   let lastUser = null;
@@ -149,9 +150,75 @@ export async function renderLogin(root, { onLogin }) {
         'div',
         { class: 'login-foot' },
         h('div', { class: 'brand-mark' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', { class: 'sep' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')),
-        h('span', {}, `© ${year} KT. All rights reserved.`)
+        h('span', {}, `© ${year} KT. All rights reserved.`, h('a', { href: '#/admin-login', class: 'admin-entry', 'aria-label': '관리자 로그인' }, ' · Admin')
+        )
       )
     )
   );
   viewStart();
+}
+
+/** Quality Admin 전용 로그인. 일반 사번 로그인과 분리된 경로(#/admin-login)로만 진입 가능하며 사번+관리자 비밀번호가 필요하다. */
+async function renderAdminLogin(root, { onLogin }) {
+  const card = h('div', { class: 'login-card' });
+  const errEl = h('div', { class: 'error small mt-8 hidden' });
+  const showErr = (msg) => {
+    errEl.textContent = msg;
+    errEl.classList.remove('hidden');
+  };
+  const idInput = h('input', { class: 'input', placeholder: '관리자 사번', autocomplete: 'off' });
+  const pwInput = h('input', { class: 'input', type: 'password', placeholder: '관리자 비밀번호', autocomplete: 'off' });
+  const btn = h('button', { class: 'btn btn-primary btn-block mt-8', onClick: submit }, '관리자 로그인');
+
+  async function submit(e) {
+    errEl.classList.add('hidden');
+    const employeeId = idInput.value.trim();
+    const password = pwInput.value;
+    if (!employeeId || !password) return showErr('사번과 비밀번호를 모두 입력해주세요.');
+    setBusy(e.currentTarget, true);
+    try {
+      const { user } = await api.session.adminStart(employeeId, password);
+      await store.loadSession();
+      store.setUser(user);
+      onLogin();
+    } catch (err) {
+      showErr(errorMessage(err));
+    } finally {
+      setBusy(e.currentTarget, false);
+    }
+  }
+  pwInput.addEventListener('keydown', (e) => e.key === 'Enter' && submit(e));
+
+  card.append(
+    h('h2', {}, 'Quality Admin 로그인'),
+    h('p', { class: 'hint' }, '지정된 관리자 계정만 접근할 수 있습니다.'),
+    h('div', { class: 'field' }, h('label', {}, '사번'), h('div', { class: 'input-icon' }, h('span', { class: 'ico' }, '👤'), idInput)),
+    h('div', { class: 'field' }, h('label', {}, '비밀번호'), h('div', { class: 'input-icon' }, h('span', { class: 'ico' }, '🔒'), pwInput)),
+    btn,
+    errEl,
+    h('a', { href: '#/start', class: 'btn btn-ghost btn-block mt-8', style: { color: '#A9BEDD', textAlign: 'center' } }, '← 일반 로그인으로')
+  );
+
+  const brand = h(
+    'div',
+    { class: 'login-brand' },
+    h('div', { class: 'bar' }),
+    h('h1', {}, 'KT ', h('span', { class: 'accent' }, 'AI Agent')),
+    h('div', { class: 'sub' }, '프로젝트 품질 · 결함관리 서비스')
+  );
+  const year = new Date().getFullYear();
+  clear(root).append(
+    h(
+      'div',
+      { class: 'login' },
+      h('div', { class: 'login-wrap' }, brand, card),
+      h(
+        'div',
+        { class: 'login-foot' },
+        h('div', { class: 'brand-mark' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', { class: 'sep' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')),
+        h('span', {}, `© ${year} KT. All rights reserved.`)
+      )
+    )
+  );
+  setTimeout(() => idInput.focus(), 0);
 }

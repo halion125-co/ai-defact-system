@@ -23,7 +23,8 @@ node backend/server.js
 
 브라우저에서 `http://localhost:8080/` 접속 → **신규 사용자 등록** 또는 사번 입력으로 시작.
 
-- 최초 Quality Admin: 사번 `admin`으로 등록/시작하면 자동 승격된다. (`config/server.config.json`의 `bootstrapAdminEmployeeIds` 또는 환경변수 `DMS_BOOTSTRAP_ADMIN=사번1,사번2`)
+- 일반 사용자는 비밀번호 없이 사번만으로 로그인/등록한다.
+- Quality Admin은 **별도 로그인 경로**(`#/admin-login`, 화면 하단의 작은 "· Admin" 링크)에서 **사번 + 관리자 비밀번호**를 입력해야 승격/로그인된다. 관리자 비밀번호는 환경변수 `DMS_ADMIN_PASSWORD` 또는 `config/server.config.json`의 `adminPassword`로 설정한다(비어 있으면 관리자 로그인 자체가 거부된다). 연속 5회 실패 시 5분간 잠긴다.
 - 데모 seed 사용자: `admin`(김성훈, Quality Admin), `10001`(이영희), `10002`(박민수), `20001`(홍길동), `20002`(최지우)
 - 데모 seed 데이터: 결함 12건(Open/조치중/Done/배포/Closed/Re-open/Cancel), 개선요청 3건(조치 2·Closed 1), 문의 2건(Closed 1)
 
@@ -44,7 +45,7 @@ Docker: `docker compose up -d --build` (또는 구버전 CLI는 `docker-compose 
 
 ## 설정
 
-`config/server.config.json` (환경변수 `DMS_PORT`, `DMS_HOST`, `DMS_DATA_DIR`, `DMS_UPLOAD_DIR`, `DMS_BACKUP_DIR`, `DMS_LOG_DIR`, `DMS_BOOTSTRAP_ADMIN`, `DMS_CONFIG`가 우선)
+`config/server.config.json` (환경변수 `DMS_PORT`, `DMS_HOST`, `DMS_DATA_DIR`, `DMS_UPLOAD_DIR`, `DMS_BACKUP_DIR`, `DMS_LOG_DIR`, `DMS_BOOTSTRAP_ADMIN`, `DMS_ADMIN_PASSWORD`, `DMS_CONFIG`가 우선)
 
 ```json
 {
@@ -57,6 +58,7 @@ Docker: `docker compose up -d --build` (또는 구버전 CLI는 `docker-compose 
   "sessionTtlHours": 12,
   "timezone": "Asia/Seoul",
   "bootstrapAdminEmployeeIds": ["admin"],
+  "adminPassword": "",
   "backupSchedule": { "enabled": true, "hour": 2, "minute": 0 }
 }
 ```
@@ -112,7 +114,7 @@ backup/<YYYYMMDD_HHMMSS>/   data + uploads 복사본, status.json
 
 | 영역 | Endpoint |
 |---|---|
-| Session | `POST /api/session/start` `GET /api/session/current` `POST /api/session/end` |
+| Session | `POST /api/session/start` `POST /api/session/admin-start`(사번+관리자 비밀번호) `GET /api/session/current` `POST /api/session/end` |
 | Users | `POST /api/users` `GET /api/users` `GET /api/users/recent` `PATCH /api/users/{id}` |
 | Config | `GET/PUT /api/config/project` `POST/PATCH/DELETE /api/config/environments[/{id}]` `PUT /api/config/environments/order` `PUT /api/config/priorities` `GET/PUT /api/config/operation` |
 | Issues | `GET /api/issues` `POST /api/issues/{defects\|improvements\|inquiries}` `GET/PATCH /api/issues/{id}` |

@@ -29,9 +29,17 @@ function makeContainer(opts = {}) {
   return c;
 }
 
+/** 테스트 전용: 실제 서비스는 #/admin-login(사번+관리자 비밀번호)으로만 Quality Admin 승격이 된다. */
+async function promoteToAdmin(c, employeeId) {
+  const u = c.repos.userRepo.findByEmployeeId(employeeId);
+  if (!u) throw new Error(`promoteToAdmin: 사번 ${employeeId} 사용자 없음`);
+  await c.repos.userRepo.update(u.userId, { isQualityAdmin: true });
+}
+
 async function makeUsers(c) {
-  await c.userService.register({ employeeId: 'admin', name: '김성훈', team: '품질팀' });
-  const admin = await c.userService.findForSession('admin');
+  const created = await c.userService.register({ employeeId: 'admin', name: '김성훈', team: '품질팀' });
+  // 테스트 전용: Admin 권한 승격은 실제로는 #/admin-login(사번+관리자 비밀번호)으로만 가능하다.
+  const admin = c.userService.publicUser(await c.repos.userRepo.update(created.userId, { isQualityAdmin: true }));
   const reporter = await c.userService.register({ employeeId: '10001', name: '이영희', team: '업무팀' });
   const dev = await c.userService.register({ employeeId: '20001', name: '홍길동', team: '개발팀' });
   const other = await c.userService.register({ employeeId: '30001', name: '박민수', team: '테스트팀' });
@@ -106,4 +114,4 @@ function client(base) {
   };
 }
 
-module.exports = { makeContainer, makeUsers, DEFECT_BODY, startServer, client };
+module.exports = { makeContainer, makeUsers, promoteToAdmin, DEFECT_BODY, startServer, client };

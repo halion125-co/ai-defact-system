@@ -71,6 +71,7 @@ export const api = {
   session: {
     current: () => request('GET', '/api/session/current'),
     start: (employeeId) => request('POST', '/api/session/start', { body: { employeeId } }),
+    adminStart: (employeeId, password) => request('POST', '/api/session/admin-start', { body: { employeeId, password } }),
     end: () => request('POST', '/api/session/end', { body: {} }),
   },
   users: {

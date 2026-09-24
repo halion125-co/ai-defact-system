@@ -5,7 +5,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { makeContainer, DEFECT_BODY, startServer, client } = require('./helpers');
+const { makeContainer, DEFECT_BODY, startServer, client, promoteToAdmin } = require('./helpers');
 
 async function setup() {
   const c = makeContainer();
@@ -15,6 +15,7 @@ async function setup() {
   const dev = client(srv.base);
   const other = client(srv.base);
   await admin.post('/api/users', { employeeId: 'admin', name: '김성훈', team: '품질팀' });
+  await promoteToAdmin(c, 'admin');
   await rep.post('/api/users', { employeeId: '10001', name: '이영희', team: '업무팀' });
   await dev.post('/api/users', { employeeId: '20001', name: '홍길동', team: '개발팀' });
   await other.post('/api/users', { employeeId: '30001', name: '박민수', team: '테스트팀' });
@@ -279,4 +280,59 @@ test('로그인 전 화면: /api/users/recent는 요청한 사번 1건만 반환
   r = await anon.get('/api/users/recent?employeeId=20001');
   assert.deepEqual(r.body.users, []);
   void dev;
+});
+
+test('일반 로그인(/api/session/start)으로는 bootstrap 사번이라도 Quality Admin으로 자동 승격되지 않는다', async (t) => {
+  const c = makeContainer({ bootstrapAdminEmployeeIds: ['admin'] });
+  const srv = await startServer(c);
+  t.after(() => srv.close());
+  const cli = client(srv.base);
+  const reg = await cli.post('/api/users', { employeeId: 'admin', name: '김성훈', team: '품질팀' });
+  assert.equal(reg.status, 201);
+  assert.equal(reg.body.user.isQualityAdmin, false);
+  const started = await cli.post('/api/session/start', { employeeId: 'admin' });
+  assert.equal(started.body.user.isQualityAdmin, false, '일반 로그인 경로는 더 이상 자동 승격하지 않는다');
+});
+
+test('관리자 전용 로그인(/api/session/admin-start): 올바른 비밀번호로만 Quality Admin 승격/세션 발급, 실패 시 잠금', async (t) => {
+  const c = makeContainer({ adminPassword: 'sup3r-secret' });
+  const srv = await startServer(c);
+  t.after(() => srv.close());
+  const cli = client(srv.base);
+
+  // 비밀번호 없이 실패
+  let r = await cli.post('/api/session/admin-start', { employeeId: 'admin' });
+  assert.equal(r.status, 403);
+
+  // 틀린 비밀번호로 실패, 사용자도 생성되지 않음
+  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: 'wrong' });
+  assert.equal(r.status, 403);
+  assert.equal(c.repos.userRepo.findByEmployeeId('admin'), null);
+
+  // 올바른 비밀번호 → 신규 계정이 Quality Admin으로 생성되고 세션도 발급됨
+  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: 'sup3r-secret' });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.user.isQualityAdmin, true);
+  const cur = await cli.get('/api/session/current');
+  assert.equal(cur.body.user.userId, r.body.user.userId);
+
+  // 반복 실패 시 일시 잠금(무차별 대입 방지)
+  const c2 = makeContainer({ adminPassword: 'sup3r-secret' });
+  const srv2 = await startServer(c2);
+  t.after(() => srv2.close());
+  const cli2 = client(srv2.base);
+  for (let i = 0; i < 5; i += 1) {
+    await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: 'wrong' });
+  }
+  const blocked = await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: 'sup3r-secret' });
+  assert.equal(blocked.status, 403, '연속 실패 이후에는 올바른 비밀번호도 잠시 차단된다');
+});
+
+test('관리자 비밀번호가 설정되지 않은 배포는 admin-start 자체가 거부된다', async (t) => {
+  const c = makeContainer({ adminPassword: '' });
+  const srv = await startServer(c);
+  t.after(() => srv.close());
+  const cli = client(srv.base);
+  const r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: '' });
+  assert.equal(r.status, 403);
 });

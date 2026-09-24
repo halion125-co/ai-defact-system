@@ -5,7 +5,7 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { makeContainer, DEFECT_BODY, startServer, client } = require('./helpers');
+const { makeContainer, DEFECT_BODY, startServer, client, promoteToAdmin } = require('./helpers');
 
 async function setup() {
   const c = makeContainer();
@@ -14,6 +14,7 @@ async function setup() {
   const rep = client(srv.base);
   const dev = client(srv.base);
   await admin.post('/api/users', { employeeId: 'admin', name: '김성훈', team: '품질팀' });
+  await promoteToAdmin(c, 'admin');
   await rep.post('/api/users', { employeeId: '10001', name: '이영희', team: '업무팀' });
   await dev.post('/api/users', { employeeId: '20001', name: '홍길동', team: '개발팀' });
   return { c, srv, admin, rep, dev };

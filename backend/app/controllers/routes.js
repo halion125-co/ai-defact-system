@@ -43,6 +43,17 @@ function buildRoutes(c) {
     PUBLIC
   );
   r.post(
+    '/api/session/admin-start',
+    async (ctx) => {
+      V.requireObject(ctx.body);
+      const user = await c.userService.adminLogin({ employeeId: ctx.body.employeeId, password: ctx.body.password });
+      if (ctx.sid) c.sessionService.destroy(ctx.sid);
+      const sid = c.sessionService.create(user.userId);
+      return { status: 200, body: { user }, headers: { 'Set-Cookie': c.sessionService.cookieHeader(sid, { secure: ctx.req.socket.encrypted }) } };
+    },
+    PUBLIC
+  );
+  r.post(
     '/api/session/end',
     async (ctx) => {
       c.sessionService.destroy(ctx.sid);

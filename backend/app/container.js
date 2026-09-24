@@ -57,7 +57,7 @@ function createContainer(cfg, { quietLog = false } = {}) {
   setDefaultTimezone(configRepo.getOperation().timezone || cfg.timezone);
 
   const sessionService = new SessionService({ ttlHours: cfg.sessionTtlHours });
-  const userService = new UserService({ userRepo, bootstrapAdminEmployeeIds: cfg.bootstrapAdminEmployeeIds, logger });
+  const userService = new UserService({ userRepo, bootstrapAdminEmployeeIds: cfg.bootstrapAdminEmployeeIds, adminPassword: cfg.adminPassword, logger });
   const configService = new ConfigService({ configRepo, issueRepo, logger });
   const issueService = new IssueService({ issueRepo, sequenceRepo, auditRepo, userService, configService, logger });
   const workflowService = new WorkflowService({ issueService, userService, configService, logger });
