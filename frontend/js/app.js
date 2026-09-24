@@ -171,7 +171,7 @@ route('/admin-login', async (ctx) => {
   clear(app);
   await renderLogin(app, { ...ctx, navigate, onLogin: afterLogin, admin: true });
 });
-route('/', async () => navigate('/dashboard', {}, { replace: true }));
+route('/', async () => navigate('/issues/kanban', {}, { replace: true }));
 route('/dashboard', mount(renderDashboard));
 route('/issues', async () => navigate('/issues/kanban', {}, { replace: true }));
 route('/issues/kanban', mount(renderKanban));
@@ -218,7 +218,7 @@ function afterLogin() {
     /* ignore */
   }
   if (pending && pending.startsWith('#/') && !pending.startsWith('#/start')) location.hash = pending;
-  else navigate('/dashboard', {}, { replace: true });
+  else navigate('/issues/kanban', {}, { replace: true });
 }
 
 onUnauthorized(() => {
@@ -249,6 +249,6 @@ store.subscribe(() => {
     return;
   }
   document.title = `${(store.project && store.project.projectName) || '결함관리'} · KT AI Agent`;
-  if (!location.hash || location.hash === '#' || location.hash === '#/') location.hash = store.user ? '#/dashboard' : '#/start';
+  if (!location.hash || location.hash === '#' || location.hash === '#/') location.hash = store.user ? '#/issues/kanban' : '#/start';
   await startRouter();
 })();
