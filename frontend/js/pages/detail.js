@@ -31,6 +31,11 @@ export async function renderDetail(main, { params, navigate }) {
   let conflict = false;
   const root = h('div', {});
   main.append(root);
+  try {
+    await store.refreshProject({ silent: true });
+  } catch {
+    /* 기존 캐시 사용 */
+  }
 
   async function load({ silent = false } = {}) {
     if (!silent) clear(root).append(loadingState(8));
@@ -367,7 +372,10 @@ export async function renderDetail(main, { params, navigate }) {
         fd.append('expectedRevision', String(data.issue.revision));
         setBusy(btn, true, '+ 파일 추가');
         try {
-          await run(() => api.issues.upload(issue.id, fd), '첨부가 추가되었습니다.');
+          await run(async () => {
+            const res = await api.issues.upload(issue.id, fd);
+            if (res.rejected && res.rejected.length) toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
+          }, '첨부가 추가되었습니다.');
         } catch (err) {
           if (!err.isConflict) toast(errorMessage(err), 'error');
         } finally {

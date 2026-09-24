@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { errors } = require('../utils/errors');
+const { errors, AppError } = require('../utils/errors');
 const P = require('../permissions/permissions');
 const { EVENT } = require('../models/constants');
 const { ensureDir, safeJoin } = require('../utils/fsutil');
@@ -105,7 +105,21 @@ class AttachmentService {
   async upload(user, issueId, files, expectedRevision) {
     if (!files || files.length === 0) throw errors.validation('업로드할 파일이 없습니다.', { field: 'file' });
     if (files.length > 10) throw errors.validation('한 번에 10개까지 업로드할 수 있습니다.');
-    const validated = files.map((f) => ({ file: f, meta: this.validateFile(f) }));
+    // 파일별 검증: 유효한 파일만 저장하고 거부 사유를 함께 반환한다.
+    const validated = [];
+    const rejected = [];
+    for (const f of files) {
+      try {
+        validated.push({ file: f, meta: this.validateFile(f) });
+      } catch (err) {
+        if (!(err instanceof AppError)) throw err;
+        rejected.push({ name: sanitizeFilename(f.filename), code: err.code, message: err.message });
+      }
+    }
+    if (validated.length === 0) {
+      const first = rejected[0];
+      throw new AppError(first.code, rejected.length === 1 ? first.message : `업로드할 수 있는 파일이 없습니다. (${rejected.map((r) => r.name).join(', ')})`, first.code === 'FILE_TOO_LARGE' ? 413 : 400, { rejected });
+    }
     const added = [];
     const { issue } = await this.issueService.mutate(issueId, user, expectedRevision, async (iss, ctx) => {
       if (!P.canAttach(user, iss)) throw errors.forbidden('등록자, 조치자 또는 Quality Admin만 첨부를 추가할 수 있습니다.');
@@ -134,7 +148,7 @@ class AttachmentService {
       }
       ctx.event(EVENT.ATTACHMENT_ADDED, { data: { files: added.map((a) => ({ attachmentId: a.attachmentId, name: a.originalName, size: a.size })) } });
     });
-    return { id: issue.id, revision: issue.revision, attachments: added };
+    return { id: issue.id, revision: issue.revision, attachments: added, rejected };
   }
 
   /** 다운로드 대상 파일 정보 반환(권한: 세션 사용자 전원 — 프로젝트 내부 사용자 공유 원칙) */

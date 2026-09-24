@@ -193,14 +193,24 @@ test('Attachment: allowlist / MIME / traversal / size', async (t) => {
   assert.equal(r.status, 201, JSON.stringify(r.body));
   r = await rep.post(`/api/issues/${id}/attachments`, mp('bad.exe', 'application/octet-stream', Buffer.from('MZ')), { headers: hdr, raw: true });
   assert.equal(r.body.error.code, 'FILE_TYPE_NOT_ALLOWED');
-  r = await rep.post(`/api/issues/${id}/attachments`, mp('fake.png', 'image/png', Buffer.from('not a png at all')), { headers: hdr, raw: true });
+  // 혼합 업로드: 유효 파일만 저장 + rejected 반환
+  const mixed = Buffer.concat([
+    Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="expectedRevision"\r\n\r\n2\r\n--${B}\r\nContent-Disposition: form-data; name="file"; filename="good.png"\r\nContent-Type: image/png\r\n\r\n`),
+    png,
+    Buffer.from(`\r\n--${B}\r\nContent-Disposition: form-data; name="file"; filename="bad.exe"\r\nContent-Type: application/octet-stream\r\n\r\nMZ\r\n--${B}--\r\n`),
+  ]);
+  r = await rep.post(`/api/issues/${id}/attachments`, mixed, { headers: hdr, raw: true });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.attachments.length, 1);
+  assert.equal(r.body.rejected[0].name, 'bad.exe');
+  r = await rep.post(`/api/issues/${id}/attachments`, mp('fake.png', 'image/png', Buffer.from('not a png at all'), 3), { headers: hdr, raw: true });
   assert.equal(r.status, 400, 'MIME/magic 불일치');
-  r = await rep.post(`/api/issues/${id}/attachments`, mp('../../evil.png', 'image/png', png, 2), { headers: hdr, raw: true });
+  r = await rep.post(`/api/issues/${id}/attachments`, mp('../../evil.png', 'image/png', png, 3), { headers: hdr, raw: true });
   assert.equal(r.status, 201);
   const d = (await rep.get(`/api/issues/${id}`)).body;
   const atts = d.issue.attachments;
-  assert.equal(atts.length, 2);
-  assert.equal(atts[1].originalName, 'evil.png');
+  assert.equal(atts.length, 3);
+  assert.equal(atts[2].originalName, 'evil.png');
   for (const a of atts) {
     assert.ok(!a.storedName.includes('..'));
     assert.ok(fs.existsSync(path.join(c.cfg.uploadDir, id, a.storedName)));
@@ -213,7 +223,7 @@ test('Attachment: allowlist / MIME / traversal / size', async (t) => {
   assert.equal(r.buf.length, png.length);
   // oversize (설정 1MB로 낮춤)
   await c.configService.updateOperation({ isQualityAdmin: true, userId: 'U-000001' }, { maxAttachmentMb: 1 });
-  r = await rep.post(`/api/issues/${id}/attachments`, mp('big.png', 'image/png', Buffer.concat([png, Buffer.alloc(1024 * 1024 + 10)]), 3), { headers: hdr, raw: true });
+  r = await rep.post(`/api/issues/${id}/attachments`, mp('big.png', 'image/png', Buffer.concat([png, Buffer.alloc(1024 * 1024 + 10)]), 4), { headers: hdr, raw: true });
   assert.equal(r.status, 413);
 });
 

@@ -14,6 +14,9 @@ function requireObject(body) {
 }
 
 function text(value, { field, label, required = true, min = 0, max = 2000, multiline = false }) {
+  if (value !== undefined && value !== null && typeof value !== 'string') {
+    throw fail(`${label}은(는) 문자열이어야 합니다.`, field);
+  }
   const v = cleanText(value, { multiline });
   if (!v) {
     if (required) throw fail(`${label}을(를) 입력해주세요.`, field);

@@ -17,11 +17,16 @@ function readBody(req, { limit = 1024 * 1024 } = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let rejected = false;
     req.on('data', (c) => {
+      if (rejected) return;
       size += c.length;
       if (size > limit) {
+        rejected = true;
+        chunks.length = 0;
+        // 응답(413)을 먼저 보낼 수 있도록 소켓을 즉시 끊지 않고 수신을 중단한다. 서버는 응답 후 연결을 닫는다.
+        req.pause();
         reject(errors.fileTooLarge(Math.round(limit / 1024 / 1024)));
-        req.destroy();
         return;
       }
       chunks.push(c);

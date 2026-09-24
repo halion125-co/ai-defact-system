@@ -96,7 +96,11 @@ function createServer(container) {
       if (err instanceof AppError) {
         status = err.status;
         errorCode = err.code;
-        if (!res.headersSent) sendJson(res, err.status, err.toJSON());
+        if (!res.headersSent) {
+          const extra = err.status === 413 ? { Connection: 'close' } : {};
+          if (err.status === 413) res.on('finish', () => req.destroy());
+          sendJson(res, err.status, err.toJSON(), extra);
+        }
       } else {
         status = 500;
         errorCode = 'INTERNAL_ERROR';

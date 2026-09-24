@@ -47,7 +47,10 @@ async function uploadFiles(issueId, files) {
   if (!files.length) return;
   const fd = new FormData();
   for (const f of files) fd.append('file', f, f.name);
-  await api.issues.upload(issueId, fd);
+  const res = await api.issues.upload(issueId, fd);
+  if (res.rejected && res.rejected.length) {
+    toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
+  }
 }
 
 function successPanel(main, { id, title, type }, again) {
@@ -72,6 +75,12 @@ function successPanel(main, { id, title, type }, again) {
 
 export async function renderCreate(main, { params, navigate }) {
   const type = params.type;
+  // 관리자가 환경/Priority 설정을 변경했을 수 있으므로 등록 화면 진입 시 최신 설정을 반영한다.
+  try {
+    await store.refreshProject({ silent: true });
+  } catch {
+    /* 기존 캐시 사용 */
+  }
   if (!type) {
     main.append(
       pageHead('Issue 등록', '무엇을 등록하시겠어요?'),

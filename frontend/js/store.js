@@ -35,10 +35,14 @@ export const store = {
     return user;
   },
 
-  async refreshProject() {
-    this.project = await api.config.project();
-    if (this.user) this.operation = await api.config.operation();
-    this._emit();
+  /** silent: 구독자(shell 재렌더)에게 알리지 않고 캐시만 갱신 */
+  async refreshProject({ silent = false } = {}) {
+    const [project, operation] = await Promise.all([api.config.project(), this.user ? api.config.operation() : Promise.resolve(this.operation)]);
+    const changed = JSON.stringify(project) !== JSON.stringify(this.project) || JSON.stringify(operation) !== JSON.stringify(this.operation);
+    this.project = project;
+    this.operation = operation;
+    if (!silent && changed) this._emit();
+    return changed;
   },
 
   setUser(user) {
