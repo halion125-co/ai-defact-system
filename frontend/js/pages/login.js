@@ -85,7 +85,7 @@ export async function renderLogin(root, { onLogin, admin = false }) {
       name: h('input', { class: 'input', placeholder: '예) 김성훈' }),
       team: h('input', { class: 'input', placeholder: '예) AX리스크/품질팀' }),
     };
-    const fields = { employeeId: '사번', name: '이름', team: '소속' };
+    const fields = { employeeId: '사번', name: '이름', team: '소속팀' };
     const wraps = {};
     for (const [k, label] of Object.entries(fields)) {
       wraps[k] = h('div', { class: 'field' }, h('label', {}, label, h('span', { class: 'req' }, '*')), f[k], h('div', { class: 'error-msg hidden' }));

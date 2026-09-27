@@ -147,7 +147,7 @@ async function tabUsers(content) {
             title: `사용자 수정 · ${u.employeeId}`,
             fields: [
               { name: 'name', label: '이름', required: true, value: u.name },
-              { name: 'team', label: '소속', required: true, value: u.team },
+              { name: 'team', label: '소속팀', required: true, value: u.team },
             ],
             onSubmit: async (v) => { await api.users.update(u.userId, v); toast('저장되었습니다.', 'success'); load(); },
           })
@@ -168,7 +168,7 @@ async function tabUsers(content) {
         });
         tbody.append(h('tr', {}, h('td', { class: 'mono' }, u.employeeId), h('td', {}, u.name), h('td', {}, u.team), h('td', {}, u.isQualityAdmin ? h('span', { class: 'badge admin' }, 'Quality Admin') : (u.isResponder ? h('span', { class: 'badge neutral' }, '조치자') : h('span', { class: 'small muted' }, '일반 사용자'))), h('td', {}, h('span', { class: `badge ${u.active ? 'status-CLOSED' : 'neutral'}` }, u.active ? '활성' : '비활성')), h('td', { class: 'nowrap' }, fmtDateTime(u.createdAt)), h('td', {}, h('div', { class: 'flex' }, edit, admin, responder, act))));
       }
-      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속', '역할', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '사용자는 삭제하지 않고 비활성화합니다. 과거 Issue/History에는 계속 표시됩니다. 본인 계정은 Admin 해제/비활성화할 수 없습니다. 조치자가 아닌 사용자는 본인이 등록한 Issue만 조회할 수 있습니다.'));
+      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속팀', '역할', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '사용자는 삭제하지 않고 비활성화합니다. 과거 Issue/History에는 계속 표시됩니다. 본인 계정은 Admin 해제/비활성화할 수 없습니다. 조치자가 아닌 사용자는 본인이 등록한 Issue만 조회할 수 있습니다.'));
     } catch (err) {
       clear(wrap).append(errorBox(err, load));
     }

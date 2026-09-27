@@ -104,7 +104,7 @@ function userRegistration(body) {
   return {
     employeeId: text(body.employeeId, { field: 'employeeId', label: '사번', min: 1, max: 50 }).replace(/\s+/g, ''),
     name: text(body.name, { field: 'name', label: '이름', min: 2, max: 50 }),
-    team: text(body.team, { field: 'team', label: '소속', min: 1, max: 100 }),
+    team: text(body.team, { field: 'team', label: '소속팀', min: 1, max: 100 }),
     isResponder: !!body.isResponder,
   };
 }
@@ -113,7 +113,7 @@ function userUpdate(body) {
   requireObject(body);
   const out = {};
   if (body.name !== undefined) out.name = text(body.name, { field: 'name', label: '이름', min: 2, max: 50 });
-  if (body.team !== undefined) out.team = text(body.team, { field: 'team', label: '소속', min: 1, max: 100 });
+  if (body.team !== undefined) out.team = text(body.team, { field: 'team', label: '소속팀', min: 1, max: 100 });
   if (body.active !== undefined) {
     if (typeof body.active !== 'boolean') throw fail('active는 boolean이어야 합니다.', 'active');
     out.active = body.active;
