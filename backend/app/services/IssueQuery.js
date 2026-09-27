@@ -1,7 +1,7 @@
 'use strict';
 
 const { STATUS, PRIORITY, EVENT, DEPLOYMENT_STATUS } = require('../models/constants');
-const { dateKey, dayRange, daysBetween, nowIso } = require('../utils/time');
+const { dateKey, dayRange, daysBetween, businessDaysBetween, nowIso } = require('../utils/time');
 
 /**
  * Issue 목록/Dashboard 공통 필터·정렬·요약 로직.
@@ -25,6 +25,12 @@ function isStale(issue, operation, nowMs = Date.now()) {
   const days = (operation && operation.staleIssueDays) || 3;
   const lastActivity = new Date(issue.updatedAt || issue.createdAt).getTime();
   return nowMs - lastActivity >= days * 86400000;
+}
+
+/** 담당자 미지정 OPEN 상태로 근무일(주말 제외) 기준 minDays일 이상 경과 */
+function isLongUnassigned(issue, minDays, nowIso_ = nowIso()) {
+  if (issue.status !== STATUS.OPEN || issue.assignee != null) return false;
+  return businessDaysBetween(issue.createdAt, nowIso_) >= minDays;
 }
 
 function isReopened(issue) {
@@ -121,6 +127,7 @@ function applyFilters(issues, query = {}, ctx = {}) {
   }
 
   const isAdmin = !!(ctx.user && ctx.user.isQualityAdmin);
+  const isResponder = !!(ctx.user && ctx.user.isResponder);
   return issues.filter((issue) => {
     if (types && !types.includes(issue.type)) return false;
     if (statuses) {
@@ -131,6 +138,8 @@ function applyFilters(issues, query = {}, ctx = {}) {
     }
     // 임시저장은 본인 Reporter 또는 Quality Admin만 조회 가능(다른 사용자에게는 어떤 status 조합으로도 노출되지 않음)
     if (issue.status === STATUS.DRAFT && !isAdmin && !(ctx.user && issue.reporter && issue.reporter.userId === ctx.user.userId)) return false;
+    // 조치자가 아닌 일반 사용자는 본인이 등록한 Issue만 조회 가능(Admin/조치자는 전체 조회)
+    if (!isAdmin && !isResponder && !(ctx.user && issue.reporter && issue.reporter.userId === ctx.user.userId)) return false;
     if (priorities && !priorities.includes(issue.priority)) return false;
     if (envs && !(issue.environment && envs.includes(issue.environment.id))) return false;
     if ((from || to) && !inRange(issue.createdAt, from, to)) return false;
@@ -241,6 +250,7 @@ module.exports = {
   envDisplayName,
   isUnresolved,
   isStale,
+  isLongUnassigned,
   isReopened,
   isReopenedCurrent,
   isWaitingDeploy,

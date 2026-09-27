@@ -1,7 +1,7 @@
 'use strict';
 
 const { errors } = require('../utils/errors');
-const { cleanText, josa } = require('../utils/text');
+const { cleanText, josa, sanitizeRichText, richTextIsEmpty, normalizeRichTextInput } = require('../utils/text');
 const { PRIORITIES, ISSUE_STATUSES, CLOSE_TYPES } = require('../models/constants');
 
 function fail(message, field) {
@@ -25,6 +25,37 @@ function text(value, { field, label, required = true, min = 0, max = 2000, multi
   if (v.length < min) throw fail(`${josa(label, '은/는')} ${min}자 이상 입력해주세요.`, field);
   if (v.length > max) throw fail(`${josa(label, '은/는')} ${max}자 이하로 입력해주세요.`, field);
   return v;
+}
+
+/** sanitizeRichText 결과에서 태그를 걷어낸 순수 텍스트 길이(min 길이 판단용. 이미지만 있고 텍스트가 없어도 이미지 1개를 최소 1자로 친다) */
+function richTextPlainLength(sanitized) {
+  const plain = String(sanitized || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(b|strong)>/gi, '')
+    .replace(/<img\b[^>]*>/gi, '　') // 이미지 1개당 1자로 취급
+    .trim();
+  return plain.length;
+}
+
+/**
+ * "발생 현상" 등 제한적 리치 텍스트 필드 검증. sanitizeRichText로 허용 태그(b/strong/br/img)만 남기고
+ * 나머지는 전부 무해화한다. min/max 길이는 태그를 걷어낸 순수 텍스트 기준으로 판단한다(HTML 마크업 길이에
+ * 좌우되지 않도록). 최대 길이는 sanitize된 HTML 문자열 자체 기준(이미지 URL 등 포함)으로 별도 상한을 둔다.
+ */
+function richText(value, { field, label, required = true, min = 0, max = 4000, htmlMax = 20000 }) {
+  if (value !== undefined && value !== null && typeof value !== 'string') {
+    throw fail(`${josa(label, '은/는')} 문자열이어야 합니다.`, field);
+  }
+  const sanitized = sanitizeRichText(normalizeRichTextInput(String(value || '').trim()));
+  if (richTextIsEmpty(sanitized)) {
+    if (required) throw fail(`${josa(label, '을/를')} 입력해주세요.`, field);
+    return '';
+  }
+  const plainLen = richTextPlainLength(sanitized);
+  if (plainLen < min) throw fail(`${josa(label, '은/는')} ${min}자 이상 입력해주세요.`, field);
+  if (plainLen > max) throw fail(`${josa(label, '은/는')} ${max}자 이하로 입력해주세요.`, field);
+  if (sanitized.length > htmlMax) throw fail(`${josa(label, '은/는')} 너무 깁니다.`, field);
+  return sanitized;
 }
 
 function expectedRevision(body) {
@@ -74,6 +105,7 @@ function userRegistration(body) {
     employeeId: text(body.employeeId, { field: 'employeeId', label: '사번', min: 1, max: 50 }).replace(/\s+/g, ''),
     name: text(body.name, { field: 'name', label: '이름', min: 2, max: 50 }),
     team: text(body.team, { field: 'team', label: '소속', min: 1, max: 100 }),
+    isResponder: !!body.isResponder,
   };
 }
 
@@ -90,6 +122,10 @@ function userUpdate(body) {
     if (typeof body.isQualityAdmin !== 'boolean') throw fail('isQualityAdmin은 boolean이어야 합니다.', 'isQualityAdmin');
     out.isQualityAdmin = body.isQualityAdmin;
   }
+  if (body.isResponder !== undefined) {
+    if (typeof body.isResponder !== 'boolean') throw fail('isResponder는 boolean이어야 합니다.', 'isResponder');
+    out.isResponder = body.isResponder;
+  }
   return out;
 }
 
@@ -101,7 +137,7 @@ function defectCreate(body, activeEnvironments) {
   return {
     location: text(body.location, { field: 'location', label: '발생 위치', min: 1, max: 200 }),
     environment: { id: env.id, displayNameSnapshot: env.displayName },
-    symptom: text(body.symptom, { field: 'symptom', label: '발생 현상', min: 5, max: 2000, multiline: true }),
+    symptom: richText(body.symptom, { field: 'symptom', label: '발생 현상', min: 5, max: 2000 }),
     reproductionSteps: reproductionSteps(body.reproductionSteps),
     expectedResult: text(body.expectedResult, { field: 'expectedResult', label: '기대 결과', min: 5, max: 2000, multiline: true }),
   };
@@ -136,7 +172,7 @@ function draftCreate(type, body, activeEnvironments) {
     return {
       location: text(body.location, { field: 'location', label: '발생 위치', required: false, max: 200 }),
       environment: env ? { id: env.id, displayNameSnapshot: env.displayName } : null,
-      symptom: text(body.symptom, { field: 'symptom', label: '발생 현상', required: false, max: 2000, multiline: true }),
+      symptom: richText(body.symptom, { field: 'symptom', label: '발생 현상', required: false, max: 2000 }),
       reproductionSteps: Array.isArray(body.reproductionSteps) ? reproductionStepsLoose(body.reproductionSteps) : [],
       expectedResult: text(body.expectedResult, { field: 'expectedResult', label: '기대 결과', required: false, max: 2000, multiline: true }),
     };
@@ -176,7 +212,7 @@ function contentChanges(type, changes, activeEnvironments) {
   for (const [k, v] of Object.entries(changes)) {
     if (type === 'DEFECT') {
       if (k === 'location') out.location = text(v, { field: k, label: '발생 위치', min: 1, max: 200 });
-      else if (k === 'symptom') out.symptom = text(v, { field: k, label: '발생 현상', min: 5, max: 2000, multiline: true });
+      else if (k === 'symptom') out.symptom = richText(v, { field: k, label: '발생 현상', min: 5, max: 2000 });
       else if (k === 'expectedResult') out.expectedResult = text(v, { field: k, label: '기대 결과', min: 5, max: 2000, multiline: true });
       else if (k === 'reproductionSteps') out.reproductionSteps = reproductionSteps(v);
       else if (k === 'environmentId') {
@@ -301,11 +337,19 @@ function operationUpdate(body) {
     out.allowedExtensions = out.allowedExtensions.filter((e) => !blocked.includes(e));
     if (out.allowedExtensions.length === 0) throw fail('허용 확장자를 1개 이상 입력해주세요.', 'allowedExtensions');
   }
-  for (const k of ['enableChangeReference', 'enableDeployment']) {
+  for (const k of ['enableChangeReference', 'enableDeployment', 'loginAlertsEnabled']) {
     if (body[k] !== undefined) {
       if (typeof body[k] !== 'boolean') throw fail(`${k}는 boolean이어야 합니다.`, k);
       out[k] = body[k];
     }
+  }
+  if (body.announcement !== undefined) {
+    const a = body.announcement || {};
+    const title = String(a.title || '').trim().slice(0, 100);
+    const message = String(a.message || '').trim().slice(0, 2000);
+    const enabled = !!a.enabled;
+    if (enabled && !message) throw fail('공지사항 내용을 입력해주세요.', 'announcement');
+    out.announcement = { enabled, title, message };
   }
   if (body.backup !== undefined) {
     const b = body.backup || {};
@@ -320,6 +364,7 @@ function operationUpdate(body) {
 module.exports = {
   requireObject,
   text,
+  richText,
   expectedRevision,
   optionalRevision,
   priority,

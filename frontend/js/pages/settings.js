@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, card, forbiddenState, toast, errorMessage, setBusy, confirmModal, formModal, loadingState, errorBox, fmtDateTime, fmtBytes, josa } from '../ui.js';
+import { h, clear, pageHead, card, forbiddenState, toast, errorMessage, setBusy, confirmModal, formModal, openModal, copyText, loadingState, errorBox, fmtDateTime, fmtBytes, josa } from '../ui.js';
 
 const TABS = [
   { key: 'project', label: '프로젝트' },
@@ -11,6 +11,7 @@ const TABS = [
   { key: 'priorities', label: 'Priority' },
   { key: 'users', label: '사용자' },
   { key: 'operation', label: '운영설정' },
+  { key: 'external', label: '외부 연동' },
   { key: 'backup', label: '백업 · 상태' },
 ];
 
@@ -23,7 +24,7 @@ export async function renderSettings(main, { query, navigate }) {
   const nav = h('nav', { class: 'settings-nav' }, ...TABS.map((t) => h('a', { class: `nav-item${t.key === tab.key ? ' active' : ''}`, href: `#/settings?tab=${t.key}` }, t.label)));
   const content = h('div', {});
   main.append(pageHead('설정', 'Quality Admin 전용. 프로젝트/환경/사용자/운영 설정을 관리합니다.'), h('div', { class: 'settings-layout' }, nav, content));
-  const R = { project: tabProject, environments: tabEnvironments, priorities: tabPriorities, users: tabUsers, operation: tabOperation, backup: tabBackup };
+  const R = { project: tabProject, environments: tabEnvironments, priorities: tabPriorities, users: tabUsers, operation: tabOperation, external: tabExternal, backup: tabBackup };
   await R[tab.key](content, navigate);
 }
 
@@ -156,13 +157,18 @@ async function tabUsers(content) {
           if (!(await confirmModal({ title: 'Quality Admin 변경', message: `${josa(u.name, '을/를')} Quality Admin ${u.isQualityAdmin ? '해제' : '지정'}합니다.`, confirmLabel: '변경' }))) return;
           try { await api.users.update(u.userId, { isQualityAdmin: !u.isQualityAdmin }); toast('변경되었습니다.', 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
         });
+        const responder = h('button', { class: `btn btn-xs ${u.isResponder ? 'btn-ghost' : 'btn-secondary'}` }, u.isResponder ? '조치자 해제' : '조치자 지정');
+        responder.addEventListener('click', async () => {
+          if (!(await confirmModal({ title: '역할 변경', message: `${josa(u.name, '을/를')} 조치자에서 ${u.isResponder ? '해제' : '지정'}합니다.`, confirmLabel: '변경' }))) return;
+          try { await api.users.update(u.userId, { isResponder: !u.isResponder }); toast('변경되었습니다.', 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
+        });
         const act = h('button', { class: `btn btn-xs ${u.active ? 'btn-danger-outline' : 'btn-secondary'}`, disabled: u.userId === store.user.userId }, u.active ? '비활성화' : '활성화');
         act.addEventListener('click', async () => {
           try { await api.users.update(u.userId, { active: !u.active }); toast('변경되었습니다.', 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
         });
-        tbody.append(h('tr', {}, h('td', { class: 'mono' }, u.employeeId), h('td', {}, u.name), h('td', {}, u.team), h('td', {}, u.isQualityAdmin ? h('span', { class: 'badge admin' }, 'Quality Admin') : '-'), h('td', {}, h('span', { class: `badge ${u.active ? 'status-CLOSED' : 'neutral'}` }, u.active ? '활성' : '비활성')), h('td', { class: 'nowrap' }, fmtDateTime(u.createdAt)), h('td', {}, h('div', { class: 'flex' }, edit, admin, act))));
+        tbody.append(h('tr', {}, h('td', { class: 'mono' }, u.employeeId), h('td', {}, u.name), h('td', {}, u.team), h('td', {}, u.isQualityAdmin ? h('span', { class: 'badge admin' }, 'Quality Admin') : (u.isResponder ? h('span', { class: 'badge neutral' }, '조치자') : h('span', { class: 'small muted' }, '일반 사용자'))), h('td', {}, h('span', { class: `badge ${u.active ? 'status-CLOSED' : 'neutral'}` }, u.active ? '활성' : '비활성')), h('td', { class: 'nowrap' }, fmtDateTime(u.createdAt)), h('td', {}, h('div', { class: 'flex' }, edit, admin, responder, act))));
       }
-      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속', '관리자', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '사용자는 삭제하지 않고 비활성화합니다. 과거 Issue/History에는 계속 표시됩니다. 본인 계정은 Admin 해제/비활성화할 수 없습니다.'));
+      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속', '역할', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '사용자는 삭제하지 않고 비활성화합니다. 과거 Issue/History에는 계속 표시됩니다. 본인 계정은 Admin 해제/비활성화할 수 없습니다. 조치자가 아닌 사용자는 본인이 등록한 Issue만 조회할 수 있습니다.'));
     } catch (err) {
       clear(wrap).append(errorBox(err, load));
     }
@@ -191,21 +197,160 @@ async function tabOperation(content) {
     bk.checked = !!(op.backup && op.backup.enabled);
     const retain = h('input', { class: 'input', type: 'number', min: 1, max: 3650, style: { maxWidth: '160px' } });
     retain.value = (op.backup && op.backup.retainDays) || 30;
+    const loginAlerts = h('input', { type: 'checkbox' });
+    loginAlerts.checked = op.loginAlertsEnabled !== false;
+    const ann = op.announcement || { enabled: false, title: '', message: '' };
+    const annEnabled = h('input', { type: 'checkbox' });
+    annEnabled.checked = !!ann.enabled;
+    const annTitle = h('input', { class: 'input', maxlength: 100, placeholder: '예) 정기 점검 안내' });
+    annTitle.value = ann.title || '';
+    const annMsg = h('textarea', { class: 'input', rows: 4, maxlength: 2000, placeholder: '로그인 시 팝업으로 표시할 공지 내용을 입력하세요.' });
+    annMsg.value = ann.message || '';
     const btn = h('button', { class: 'btn btn-primary' }, '저장');
     btn.addEventListener('click', () =>
-      saveWith(btn, () => api.config.updateOperation({ expectedRevision: op.revision, staleIssueDays: parseInt(stale.value, 10), maxAttachmentMb: parseInt(maxMb.value, 10), allowedExtensions: ext.value, enableChangeReference: cr.checked, enableDeployment: dep.checked, backup: { enabled: bk.checked, retainDays: parseInt(retain.value, 10) } }), '운영 설정이 저장되었습니다.').then(() => { clear(wrap); tabOperation(content); content.firstChild.remove(); })
+      saveWith(
+        btn,
+        () =>
+          api.config.updateOperation({
+            expectedRevision: op.revision,
+            staleIssueDays: parseInt(stale.value, 10),
+            maxAttachmentMb: parseInt(maxMb.value, 10),
+            allowedExtensions: ext.value,
+            enableChangeReference: cr.checked,
+            enableDeployment: dep.checked,
+            backup: { enabled: bk.checked, retainDays: parseInt(retain.value, 10) },
+            loginAlertsEnabled: loginAlerts.checked,
+            announcement: { enabled: annEnabled.checked, title: annTitle.value.trim(), message: annMsg.value.trim() },
+          }),
+        '운영 설정이 저장되었습니다.'
+      ).then(() => { clear(wrap); tabOperation(content); content.firstChild.remove(); })
     );
     wrap.append(
       h('div', { class: 'form-grid' }, fieldRow('장기 미조치 기준 일수', stale, 'Open/In Progress 상태로 이 일수 이상 업데이트가 없으면 장기 미조치'), fieldRow('첨부 최대 크기 (MB)', maxMb)),
       fieldRow('허용 확장자', ext, '쉼표로 구분. 실행 파일/HTML/JS 등은 정책상 허용되지 않습니다.'),
       h('div', { class: 'flex gap-16 mb-16' }, h('label', { class: 'checkbox' }, cr, 'Change Reference 사용'), h('label', { class: 'checkbox' }, dep, 'Deployment(배포 정보) 기능 사용')),
       h('div', { class: 'form-grid' }, h('div', { class: 'field' }, h('label', {}, '백업'), h('label', { class: 'checkbox' }, bk, '일 1회 자동 백업 사용')), fieldRow('백업 보관 일수', retain)),
+      h(
+        'div',
+        { class: 'field mb-16' },
+        h('label', {}, '로그인 알림 팝업'),
+        h('label', { class: 'checkbox' }, loginAlerts, '임시저장/조치대상/미배정 알림 팝업 사용'),
+        h('div', { class: 'help' }, '끄면 아래 공지사항과 무관하게 건수 기반 알림(임시저장, 조치·확인대상, 관리자 미배정)이 표시되지 않습니다.')
+      ),
+      h(
+        'div',
+        { class: 'field mb-16' },
+        h('label', {}, '공지사항'),
+        h('label', { class: 'checkbox mb-8' }, annEnabled, '로그인 시 공지사항 팝업 표시'),
+        annTitle,
+        h('div', { class: 'mt-8' }, annMsg),
+        h('div', { class: 'help' }, '사용자가 "오늘 하루 보지 않기"를 선택해도, 공지 내용을 저장하면 다시 표시됩니다.')
+      ),
       h('div', { class: 'small muted mb-16' }, `Timezone ${op.timezone} · revision ${op.revision}`),
       h('div', { class: 'form-actions', style: { justifyContent: 'flex-start' } }, btn)
     );
   } catch (err) {
     clear(wrap).append(errorBox(err));
   }
+}
+
+/* ---------- 외부 연동 ---------- */
+async function tabExternal(content) {
+  const wrap = h('div', {}, loadingState(3));
+  content.append(
+    card('외부 연동 API', wrap, { headRight: h('span', { class: 'small muted' }, '사내 타 시스템 전용 · 내부망 접근 권장') })
+  );
+  async function load() {
+    clear(wrap).append(loadingState(3));
+    try {
+      const s = await api.admin.externalApi();
+      clear(wrap);
+      const statusBadgeEl = h('span', { class: `badge ${s.enabled && s.hasKey ? 'status-CLOSED' : 'neutral'}` }, s.enabled && s.hasKey ? '사용 중' : '사용 안 함');
+      const enableToggle = h('input', { type: 'checkbox' });
+      enableToggle.checked = !!s.enabled;
+      enableToggle.disabled = !s.hasKey;
+      enableToggle.addEventListener('change', async () => {
+        try {
+          await api.admin.setExternalApiEnabled(enableToggle.checked);
+          toast(enableToggle.checked ? '외부 연동 API가 활성화되었습니다.' : '외부 연동 API가 비활성화되었습니다.', 'success');
+          load();
+        } catch (err) {
+          toast(errorMessage(err), 'error');
+          enableToggle.checked = !enableToggle.checked;
+        }
+      });
+
+      const issueBtn = h('button', { class: 'btn btn-primary' }, s.hasKey ? 'API Key 재발급' : 'API Key 발급');
+      issueBtn.addEventListener('click', async () => {
+        if (s.hasKey && !(await confirmModal({ title: 'API Key 재발급', message: '기존 Key는 즉시 폐기되며, 이 Key를 사용 중인 외부 시스템은 재발급된 새 Key로 갱신해야 합니다.', confirmLabel: '재발급', variant: 'btn-danger' }))) return;
+        setBusy(issueBtn, true);
+        try {
+          const res = await api.admin.issueExternalApiKey();
+          load();
+          openModal({
+            title: '발급된 API Key',
+            body: h(
+              'div',
+              {},
+              h('p', { class: 'muted' }, '이 Key는 지금만 표시됩니다. 안전한 곳에 저장한 뒤 외부 시스템 설정에 등록하세요.'),
+              h('div', { class: 'field' }, h('input', { class: 'input mono', readonly: true, value: res.apiKey, onClick: (e) => e.target.select() }))
+            ),
+            actions: [
+              { label: '복사', variant: 'btn-secondary', onClick: async () => { await copyText(res.apiKey); toast('복사되었습니다.', 'success'); } },
+              { label: '닫기', variant: 'btn-primary', onClick: (c) => c() },
+            ],
+          });
+        } catch (err) {
+          toast(errorMessage(err), 'error');
+        } finally {
+          setBusy(issueBtn, false, s.hasKey ? 'API Key 재발급' : 'API Key 발급');
+        }
+      });
+      const revokeBtn = s.hasKey
+        ? h('button', { class: 'btn btn-danger-outline' }, 'Key 폐기')
+        : null;
+      if (revokeBtn) {
+        revokeBtn.addEventListener('click', async () => {
+          if (!(await confirmModal({ title: 'API Key 폐기', message: '이 Key를 사용하는 모든 외부 연동이 즉시 중단됩니다.', confirmLabel: '폐기', variant: 'btn-danger' }))) return;
+          try {
+            await api.admin.revokeExternalApiKey();
+            toast('API Key가 폐기되었습니다.', 'success');
+            load();
+          } catch (err) {
+            toast(errorMessage(err), 'error');
+          }
+        });
+      }
+
+      wrap.append(
+        h('div', { class: 'info-box mb-16' }, '외부 시스템이 사번(employeeId)을 지정해 결함 티켓을 생성·조회하거나, 배포 등록·댓글·첨부를 남길 수 있는 API입니다. 상태 전이(조치 시작/완료/종료 등)는 내부 화면에서만 수행합니다.'),
+        h('div', { class: 'flex gap-16 mb-16', style: { alignItems: 'center' } }, h('span', {}, '상태'), statusBadgeEl, h('label', { class: 'checkbox', style: { marginLeft: '8px' } }, enableToggle, '사용')),
+        h('div', { class: 'field mb-16' }, h('label', {}, 'API Key'), h('div', { class: 'flex', style: { alignItems: 'center', gap: '10px' } }, h('span', { class: 'mono' }, s.keyPreview || '발급된 Key 없음'), issueBtn, revokeBtn)),
+        s.createdAt ? h('div', { class: 'small muted mb-16' }, `발급일 ${fmtDateTime(s.createdAt)} · 최근 변경 ${fmtDateTime(s.updatedAt)}`) : null,
+        h(
+          'div',
+          { class: 'card', style: { background: '#F9FAFC' } },
+          h(
+            'div',
+            { class: 'card-body small' },
+            h('div', { style: { fontWeight: 600, marginBottom: '8px' } }, '호출 방법'),
+            h('div', { class: 'mono', style: { whiteSpace: 'pre-wrap', lineHeight: '1.7' } },
+              'POST /api/external/v1/issues\n' +
+              'Header: X-Api-Key: <발급된 Key>\n' +
+              'Body: { "employeeId": "10001", "location": "...", "environmentId": "...", "symptom": "...", "reproductionSteps": ["..."], "expectedResult": "..." }\n\n' +
+              'GET  /api/external/v1/issues/:id?employeeId=10001\n' +
+              'POST /api/external/v1/issues/:id/deployments  (조치자/Admin만 · body에 employeeId 포함)\n' +
+              'POST /api/external/v1/issues/:id/comments     (body에 employeeId 포함)\n' +
+              'POST /api/external/v1/issues/:id/attachments  (multipart, employeeId는 query string)'
+            )
+          )
+        )
+      );
+    } catch (err) {
+      clear(wrap).append(errorBox(err, load));
+    }
+  }
+  await load();
 }
 
 /* ---------- 백업 · 상태 ---------- */

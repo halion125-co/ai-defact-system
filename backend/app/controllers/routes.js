@@ -6,7 +6,8 @@ const { errors } = require('../utils/errors');
 const { parseMultipart } = require('../utils/multipart');
 const { readBody } = require('../http/helpers');
 const V = require('../validators/validators');
-const { applyFilters, sortIssues, toSummary } = require('../services/IssueQuery');
+const { applyFilters, sortIssues, toSummary, isLongUnassigned } = require('../services/IssueQuery');
+const { STATUS } = require('../models/constants');
 
 /**
  * API Route 정의. Controller 책임: 파싱 → 세션 → Service 호출 → 응답 변환.
@@ -175,11 +176,11 @@ function buildRoutes(c) {
   r.post('/api/issues/:id/deployments', async (ctx) => ({ status: 201, body: await c.workflowService.registerDeployment(ctx.user, ctx.params.id, ctx.body) }));
 
   /* ---------- Dashboard ---------- */
-  r.get('/api/dashboard/summary', async (ctx) => ({ body: c.dashboardService.summary(ctx.query) }));
-  r.get('/api/dashboard/daily', async (ctx) => ({ body: c.dashboardService.daily(ctx.query) }));
-  r.get('/api/dashboard/burnup', async (ctx) => ({ body: c.dashboardService.burnup(ctx.query) }));
-  r.get('/api/dashboard/distribution', async (ctx) => ({ body: c.dashboardService.distribution(ctx.query) }));
-  r.get('/api/dashboard/attention', async (ctx) => ({ body: c.dashboardService.attention(ctx.query) }));
+  r.get('/api/dashboard/summary', async (ctx) => ({ body: c.dashboardService.summary(ctx.query, ctx.user) }));
+  r.get('/api/dashboard/daily', async (ctx) => ({ body: c.dashboardService.daily(ctx.query, ctx.user) }));
+  r.get('/api/dashboard/burnup', async (ctx) => ({ body: c.dashboardService.burnup(ctx.query, ctx.user) }));
+  r.get('/api/dashboard/distribution', async (ctx) => ({ body: c.dashboardService.distribution(ctx.query, ctx.user) }));
+  r.get('/api/dashboard/attention', async (ctx) => ({ body: c.dashboardService.attention(ctx.query, ctx.user) }));
 
   /* ---------- Search ---------- */
   r.get('/api/search', async (ctx) => {
@@ -203,6 +204,71 @@ function buildRoutes(c) {
     const cnt = (mine) => applyFilters(all, { mine, ...(mine === 'reported' ? { includeDraft: 'true' } : {}) }, { operation, user: ctx.user }).length;
     return { body: { reported: cnt('reported'), assigned: cnt('assigned'), waiting: cnt('waiting') } };
   });
+
+  /**
+   * 로그인 직후 팝업 알림 조건.
+   * 일반 사용자: 미등록 임시저장 건수 + 조치/확인대상(assigned+waiting) 건수.
+   * Quality Admin: 근무일(주말 제외) 2일 이상 담당자 미지정 OPEN 건수.
+   * 설정(loginAlertsEnabled)에 따라 이 건수 기반 알림 자체를 끌 수 있고, 공지사항은 별도 announcement.enabled로 통제된다.
+   */
+  const LONG_UNASSIGNED_BUSINESS_DAYS = 2;
+  r.get('/api/my/login-alerts', async (ctx) => {
+    const operation = c.configService.getOperation();
+    const all = c.repos.issueRepo.all();
+    const alertsEnabled = operation.loginAlertsEnabled !== false;
+    let draftCount = 0;
+    let assignedCount = 0;
+    let waitingCount = 0;
+    let longUnassignedCount = 0;
+    if (alertsEnabled) {
+      draftCount = applyFilters(all, { mine: 'reported', status: STATUS.DRAFT, includeDraft: 'true' }, { operation, user: ctx.user }).length;
+      assignedCount = applyFilters(all, { mine: 'assigned' }, { operation, user: ctx.user }).length;
+      waitingCount = applyFilters(all, { mine: 'waiting' }, { operation, user: ctx.user }).length;
+      longUnassignedCount = ctx.user.isQualityAdmin ? all.filter((i) => isLongUnassigned(i, LONG_UNASSIGNED_BUSINESS_DAYS)).length : 0;
+    }
+    const announcement = operation.announcement && operation.announcement.enabled ? operation.announcement : null;
+    return {
+      body: {
+        draftCount,
+        actionableCount: assignedCount + waitingCount,
+        longUnassignedCount,
+        longUnassignedDays: LONG_UNASSIGNED_BUSINESS_DAYS,
+        announcement,
+      },
+    };
+  });
+
+  /* ---------- Admin: External API Key 관리 ---------- */
+  r.get('/api/admin/external-api', async (ctx) => ({ body: c.configService.getExternalApiStatus(ctx.user) }));
+  r.post('/api/admin/external-api/issue', async (ctx) => ({ body: await c.configService.issueExternalApiKey(ctx.user) }));
+  r.post('/api/admin/external-api/revoke', async (ctx) => ({ body: await c.configService.revokeExternalApiKey(ctx.user) }));
+  r.put('/api/admin/external-api/enabled', async (ctx) => ({ body: await c.configService.setExternalApiEnabled(ctx.user, !!(ctx.body && ctx.body.enabled)) }));
+
+  /**
+   * ---------- 외부 연동 API (사내 타 시스템 전용) ----------
+   * 인증: X-Api-Key 헤더(설정 > 운영설정에서 발급). 세션 쿠키를 쓰지 않으므로 CSRF 방어 대상이 아니다(server.js에서 externalApi 라우트는 별도 처리).
+   * Actor: 요청 body(GET은 query)의 employeeId로 사내 등록된 사용자를 조회해 그 사용자 권한으로 동작한다.
+   * 범위: 결함(Defect) 생성/조회, 배포 등록, 댓글, 첨부 — 상태 전이(claim/start/resolve/close 등)는 지원하지 않는다.
+   */
+  const EXTERNAL_API = { externalApi: true };
+  r.post('/api/external/v1/issues', async (ctx) => ({ status: 201, body: await c.issueService.createDefect(ctx.user, ctx.body) }), EXTERNAL_API);
+  r.get('/api/external/v1/issues/:id', async (ctx) => ({ body: c.issueService.getDetail(ctx.user, ctx.params.id) }), EXTERNAL_API);
+  r.post('/api/external/v1/issues/:id/deployments', async (ctx) => ({ status: 201, body: await c.workflowService.registerDeployment(ctx.user, ctx.params.id, ctx.body) }), EXTERNAL_API);
+  r.post('/api/external/v1/issues/:id/comments', async (ctx) => ({ status: 201, body: await c.commentService.add(ctx.user, ctx.params.id, ctx.body) }), EXTERNAL_API);
+  r.post(
+    '/api/external/v1/issues/:id/attachments',
+    async (ctx) => {
+      const ct = ctx.req.headers['content-type'] || '';
+      if (!ct.toLowerCase().startsWith('multipart/form-data')) throw errors.validation('multipart/form-data 요청이 필요합니다.');
+      const limit = c.attachmentService.maxBytes() * 10 + 1024 * 1024;
+      const buf = await readBody(ctx.req, { limit });
+      const { fields, files } = parseMultipart(buf, ct);
+      const expectedRevision = fields.expectedRevision !== undefined ? parseInt(fields.expectedRevision, 10) : undefined;
+      if (expectedRevision !== undefined && Number.isNaN(expectedRevision)) throw errors.validation('expectedRevision이 올바르지 않습니다.');
+      return { status: 201, body: await c.attachmentService.upload(ctx.user, ctx.params.id, files, expectedRevision) };
+    },
+    { externalApi: true, rawBody: true }
+  );
 
   /* ---------- Admin: Backup / Audit / Health ---------- */
   r.get('/api/admin/backup/status', async (ctx) => {

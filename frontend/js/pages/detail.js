@@ -8,6 +8,8 @@ import {
   h, clear, card, statusBadge, priorityBadge, typeBadge, deployBadge, fmtDateTime, fmtBytes, userLabel, initials, toast, errorMessage, errorBox, conflictBox,
   loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue, josa, icon,
 } from '../ui.js';
+import { getPrimaryAction, toActionIssue } from '../issueActions.js';
+import { renderIssueBodyText, createRichTextEditor, toDisplayHtml } from '../richText.js';
 
 const FIELD_LABEL = {
   location: '발생 위치', environment: '발생 환경', symptom: '발생 현상', reproductionSteps: '재현 절차', expectedResult: '기대 결과',
@@ -83,6 +85,8 @@ export async function renderDetail(main, { params, navigate }) {
      * { primary: {label, onClick, variant}|null, secondary: [...], note }
      * 액션 핸들러(openResolve 등)는 이 draw() 스코프 하단에 함수 선언되어 있어 호이스팅으로 참조 가능하다.
      */
+    // Kanban 드래그앤드롭과 primary action 판단 기준을 공유한다(issueActions.js). CLAIM(배정)만 이 화면 고유 흐름(doClaim)으로 남긴다.
+    const PRIMARY_HANDLERS = { START: doStart, RESOLVE: openResolve, CLOSE_VERIFIED: openCloseVerified, CLOSE_AGREED: openCloseAgreed };
     function nextAction(issue, p) {
       const st = issue.status;
       const secondary = [];
@@ -96,10 +100,10 @@ export async function renderDetail(main, { params, navigate }) {
         if (p.canReopen) secondary.push({ label: 'Re-open', onClick: openReopen, variant: 'btn-warning' });
       } else {
         if (st !== 'CANCEL' && p.canClaim) primary = { label: '내게 배정', onClick: doClaim, variant: 'btn-primary' };
-        else if (p.canStart) primary = { label: '조치 시작', onClick: doStart, variant: 'btn-primary' };
-        else if (p.canResolve) primary = { label: '조치 완료', onClick: openResolve, variant: 'btn-primary' };
-        else if (p.canCloseVerified) primary = { label: '정상 확인', onClick: openCloseVerified, variant: 'btn-success' };
-        else if (p.canCloseAgreed && !(p.canCloseVerified && !p.isAdmin)) primary = { label: p.isAdmin ? '합의 Close' : 'Close', onClick: openCloseAgreed, variant: 'btn-success' };
+        else {
+          const pa = getPrimaryAction(toActionIssue(issue), me);
+          if (pa) primary = { label: pa.label, onClick: PRIMARY_HANDLERS[pa.key], variant: pa.variant };
+        }
 
         if (st === 'DONE' && p.isReporter && !p.isAdmin && !primary) note = '조치가 완료되었습니다. 재검증 후 결과를 선택해주세요.';
 
@@ -152,9 +156,11 @@ export async function renderDetail(main, { params, navigate }) {
     const block = (title, body) => h('div', { class: 'content-block' }, h('h4', {}, title), body);
     const contentBody = h('div', {});
     if (issue.type === 'DEFECT') {
+      const symptomBody = renderIssueBodyText(issue.symptom);
+      bindBodyImagePreview(symptomBody);
       contentBody.append(
         block('발생 위치', h('div', { class: 'body' }, issue.location)),
-        block('발생 현상', h('div', { class: 'body' }, issue.symptom)),
+        block('발생 현상', symptomBody),
         block('재현 절차', h('ol', {}, ...(issue.reproductionSteps || []).map((s) => h('li', {}, s.text)))),
         block('기대 결과', h('div', { class: 'body' }, issue.expectedResult))
       );
@@ -201,7 +207,7 @@ export async function renderDetail(main, { params, navigate }) {
           op.enableDeployment ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, '배포'), h('div', { class: 'v' }, deployBadge(d.status || 'NOT_DEPLOYED'), d.status === 'DEPLOYED' ? h('span', { style: { marginLeft: '8px' } }, `${d.environmentNameSnapshot || ''} ${d.version || ''} · ${fmtDateTime(d.deployedAt)}`) : null)) : null,
           issue.close && issue.close.type ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, `Close (${CLOSE_LABEL[issue.close.type] || issue.close.type})`), h('div', { class: 'v pre' }, issue.close.comment || '-'), h('div', { class: 'small muted' }, `최초 ${fmtDateTime(issue.close.firstClosedAt)} · 최근 ${fmtDateTime(issue.close.closedAt)}`)) : null
         )
-      : h('div', { class: 'trace-empty' }, '연결된 조치 결과 없음');
+      : h('div', { class: 'trace-empty' }, '아직 연결된 추적 정보가 없습니다.');
 
     root.append(
       h('div', { class: 'flex mb-16', style: { justifyContent: 'space-between' } }, h('a', { class: 'btn btn-ghost btn-sm', href: '#/issues/list' }, '← 목록'), h('span', { class: 'small muted' }, `revision ${issue.revision}`)),
@@ -215,7 +221,7 @@ export async function renderDetail(main, { params, navigate }) {
 
     /* ================= Actions ================= */
     async function doClaim() {
-      const ok = await confirmModal({ title: '내게 배정', message: `${issue.id}의 조치자를 나(${me.name})로 지정합니다.\n배정 후 실제 조치를 시작할 때 [조치 시작]을 선택하세요.`, confirmLabel: '내게 배정' });
+      const ok = await confirmModal({ title: '내게 배정', message: '이 이슈의 조치자를 나로 지정합니다. 실제 조치는 상세 화면에서 시작하세요.', confirmLabel: '내게 배정' });
       if (!ok) return;
       try {
         await run((rev) => api.issues.action(issue.id, 'claim', { expectedRevision: rev }), '조치자로 지정되었습니다.');
@@ -342,25 +348,18 @@ export async function renderDetail(main, { params, navigate }) {
       });
     }
     function openEdit() {
-      const isDef = issue.type === 'DEFECT';
-      const fields = isDef
+      if (issue.type === 'DEFECT') return openEditDefect();
+      const isImp = issue.type === 'IMPROVEMENT';
+      const fields = isImp
         ? [
-            { name: 'location', label: '발생 위치', required: true, value: issue.location },
-            { name: 'environmentId', label: '발생 환경', type: 'select', required: true, options: store.project.environments.filter((e) => e.active || e.id === issue.environment.id).map((e) => ({ value: e.id, label: e.displayName })), value: issue.environment.id },
-            { name: 'symptom', label: '발생 현상', type: 'textarea', required: true, value: issue.symptom, rows: 4 },
-            { name: 'reproductionSteps', label: '재현 절차 (한 줄에 한 단계)', type: 'textarea', required: true, value: (issue.reproductionSteps || []).map((s) => s.text).join('\n'), rows: 5 },
-            { name: 'expectedResult', label: '기대 결과', type: 'textarea', required: true, value: issue.expectedResult, rows: 3 },
+            { name: 'target', label: '개선 대상', required: true, value: issue.target },
+            { name: 'request', label: '개선 내용', type: 'textarea', required: true, value: issue.request, rows: 4 },
+            { name: 'reason', label: '개선 필요 사유', type: 'textarea', value: issue.reason || '', rows: 3 },
           ]
-        : issue.type === 'IMPROVEMENT'
-          ? [
-              { name: 'target', label: '개선 대상', required: true, value: issue.target },
-              { name: 'request', label: '개선 내용', type: 'textarea', required: true, value: issue.request, rows: 4 },
-              { name: 'reason', label: '개선 필요 사유', type: 'textarea', value: issue.reason || '', rows: 3 },
-            ]
-          : [
-              { name: 'target', label: '문의 대상', required: true, value: issue.target },
-              { name: 'question', label: '문의 내용', type: 'textarea', required: true, value: issue.question, rows: 4 },
-            ];
+        : [
+            { name: 'target', label: '문의 대상', required: true, value: issue.target },
+            { name: 'question', label: '문의 내용', type: 'textarea', required: true, value: issue.question, rows: 4 },
+          ];
       formModal({
         title: '등록내용 수정',
         description: '변경 전/후 내용은 활동 이력에 기록됩니다.',
@@ -370,22 +369,109 @@ export async function renderDetail(main, { params, navigate }) {
         onSubmit: (v) => {
           const changes = {};
           for (const f of fields) {
-            let nv = v[f.name];
-            let ov;
-            if (f.name === 'environmentId') ov = issue.environment.id;
-            else if (f.name === 'reproductionSteps') {
-              nv = nv.split('\n').map((s) => s.replace(/^\s*\d{1,3}[.)]\s+/, '').trim()).filter(Boolean);
-              ov = (issue.reproductionSteps || []).map((s) => s.text);
-              if (JSON.stringify(nv) === JSON.stringify(ov)) continue;
-              changes.reproductionSteps = nv;
-              continue;
-            } else ov = issue[f.name] || '';
+            const nv = v[f.name];
+            const ov = issue[f.name] || '';
             if (nv !== ov) changes[f.name] = nv;
           }
           if (!Object.keys(changes).length) throw new Error('변경된 내용이 없습니다.');
           return run((rev) => api.issues.update(issue.id, rev, changes), '등록내용이 수정되었습니다.');
         },
       });
+    }
+
+    /** 결함 수정: 등록 화면과 동일한 라벨/순서, 재현 절차도 등록 화면과 같은 step-input 방식을 재사용한다. */
+    function openEditDefect() {
+      const pendingImages = new Map(); // pendingId -> { file }. 이 화면은 issue가 이미 있으므로 저장 시 바로 업로드 가능.
+      const envs = store.project.environments.filter((e) => e.active || e.id === issue.environment.id);
+      const location = h('input', { class: 'input', value: issue.location, maxlength: 200 });
+      const env = h('select', { class: 'input' }, ...envs.map((e) => h('option', { value: e.id }, e.displayName)));
+      env.value = issue.environment.id;
+      const symptom = createRichTextEditor({
+        initialHtml: toDisplayHtml(issue.symptom),
+        onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+      });
+      const expected = h('textarea', { class: 'input', rows: 3 });
+      expected.value = issue.expectedResult;
+
+      const stepsEl = h('div', { class: 'steps' });
+      const steps = [];
+      const renderSteps = () => {
+        clear(stepsEl);
+        steps.forEach((input, i) => {
+          stepsEl.append(h('div', { class: 'step-row' }, h('span', { class: 'num' }, `${i + 1}.`), input, h('button', { type: 'button', class: 'btn btn-ghost btn-xs', 'aria-label': '단계 삭제', disabled: steps.length <= 1, onClick: () => { steps.splice(i, 1); renderSteps(); } }, '✕')));
+        });
+      };
+      const addStep = (value = '') => {
+        const input = h('input', { class: 'input', maxlength: 500 });
+        input.value = value;
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            if (steps.indexOf(input) === steps.length - 1) addStep();
+            steps[Math.min(steps.indexOf(input) + 1, steps.length - 1)].focus();
+          }
+        });
+        steps.push(input);
+        renderSteps();
+        return input;
+      };
+      const existingSteps = (issue.reproductionSteps || []).map((s) => s.text);
+      if (existingSteps.length) existingSteps.forEach((t) => addStep(t));
+      else addStep();
+
+      const field = (label, input, help) => h('div', { class: 'field' }, h('label', {}, label, h('span', { class: 'req' }, '*')), input, help ? h('div', { class: 'help' }, help) : null);
+      const errBox = h('div', { class: 'form-error hidden' });
+      const body = h(
+        'div',
+        {},
+        errBox,
+        field('발생 위치', location, '화면/메뉴/기능 위치'),
+        field('발생 환경', env),
+        field('발생 현상', symptom, '어떤 문제가 발생했는지 적어주세요.'),
+        h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수')),
+        field('기대 결과', expected, '정상이라면 어떻게 동작해야 하는지 적어주세요.')
+      );
+
+      const submit = async (close) => {
+        errBox.classList.add('hidden');
+        const changes = {};
+        if (location.value.trim() !== issue.location) changes.location = location.value.trim();
+        if (env.value !== issue.environment.id) changes.environmentId = env.value;
+        const symptomHtml = symptom.rte.getValue();
+        if (symptomHtml !== toDisplayHtml(issue.symptom)) changes.symptom = symptomHtml;
+        if (expected.value.trim() !== issue.expectedResult) changes.expectedResult = expected.value.trim();
+        const nvSteps = steps.map((s) => s.value.trim()).filter(Boolean);
+        if (JSON.stringify(nvSteps) !== JSON.stringify(existingSteps)) changes.reproductionSteps = nvSteps;
+        if (!Object.keys(changes).length) {
+          errBox.textContent = '변경된 내용이 없습니다.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+        try {
+          await run(async (rev) => {
+            let curRev = rev;
+            if (pendingImages.size) {
+              for (const [pendingId, { file }] of pendingImages) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+                const up = await api.issues.upload(issue.id, fd);
+                curRev = up.revision;
+                const att = up.attachments && up.attachments[0];
+                if (att) symptom.rte.resolvePendingImages(new Map([[pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`]]));
+              }
+              changes.symptom = symptom.rte.getValue();
+            }
+            return api.issues.update(issue.id, curRev, changes);
+          }, '등록내용이 수정되었습니다.');
+          close();
+        } catch (err) {
+          if (!err.isConflict) {
+            errBox.textContent = errorMessage(err);
+            errBox.classList.remove('hidden');
+          }
+        }
+      };
+      openModal({ title: '등록내용 수정', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '저장', variant: 'btn-primary', onClick: submit }] });
     }
 
     function buildMoreMenu(issue, p) {
@@ -404,19 +490,30 @@ export async function renderDetail(main, { params, navigate }) {
     const wrap = h('div', { class: 'dropzone' });
     const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
     const op = store.operation || {};
+    const dzErr = h('div', { class: 'dz-error hidden' });
 
     async function doUpload(files) {
       if (!files.length) return;
+      dzErr.classList.add('hidden');
       const fd = new FormData();
       for (const f of files) fd.append('file', f, f.name);
       fd.append('expectedRevision', String(data.issue.revision));
       try {
         await run(async () => {
           const res = await api.issues.upload(issue.id, fd);
-          if (res.rejected && res.rejected.length) toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
+          if (res.rejected && res.rejected.length) {
+            const msg = `업로드 실패: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`;
+            dzErr.textContent = msg;
+            dzErr.classList.remove('hidden');
+            toast(msg, 'error', { timeout: 8000 });
+          }
         }, '첨부가 추가되었습니다.');
       } catch (err) {
-        if (!err.isConflict) toast(errorMessage(err), 'error');
+        if (!err.isConflict) {
+          dzErr.textContent = errorMessage(err);
+          dzErr.classList.remove('hidden');
+          toast(errorMessage(err), 'error');
+        }
       }
     }
     input.addEventListener('change', () => doUpload([...input.files]));
@@ -429,7 +526,7 @@ export async function renderDetail(main, { params, navigate }) {
         h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
         h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
       );
-      wrap.append(drop, input);
+      wrap.append(drop, input, dzErr);
     }
 
     if (atts.length) {
@@ -472,6 +569,14 @@ export async function renderDetail(main, { params, navigate }) {
 
   function previewImage(url, name) {
     openModal({ title: name, wide: true, body: h('img', { src: `${url}?inline=1`, alt: name, class: 'att-preview', style: { maxHeight: '70vh', margin: '0 auto' } }), actions: [{ label: '다운로드', variant: 'btn-secondary', onClick: () => window.open(url, '_blank') }, { label: '닫기', variant: 'btn-primary', onClick: (c) => c() }] });
+  }
+
+  /** 발생 현상 등 본문에 붙여넣은 이미지는 작은 썸네일로 표시하고, 클릭하면 첨부 미리보기 모달로 크게 보여준다. */
+  function bindBodyImagePreview(container) {
+    for (const img of container.querySelectorAll('img')) {
+      img.classList.add('body-image-thumb');
+      img.addEventListener('click', () => previewImage(img.src, img.alt || '첨부 이미지'));
+    }
   }
 
   /** Timeline(system) + Comment를 하나의 활동 목록으로 병합해 시간순 정렬 */

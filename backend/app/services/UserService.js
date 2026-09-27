@@ -32,6 +32,7 @@ class UserService {
       name: u.name,
       team: u.team,
       isQualityAdmin: !!u.isQualityAdmin,
+      isResponder: !!u.isResponder,
       active: u.active !== false,
       createdAt: u.createdAt,
       updatedAt: u.updatedAt,
@@ -86,7 +87,7 @@ class UserService {
     this.adminLoginFailures = { count: 0, blockedUntil: 0 };
     let user = this.userRepo.findByEmployeeId(id);
     if (!user) {
-      user = await this.userRepo.create({ employeeId: id, name: id, team: 'Quality Admin', isQualityAdmin: true });
+      user = await this.userRepo.create({ employeeId: id, name: id, team: 'Quality Admin', isQualityAdmin: true, isResponder: true });
       if (this.logger) this.logger.info('관리자 로그인으로 신규 Admin 계정 생성', { userId: user.userId });
     } else {
       if (user.active === false) throw errors.forbidden('비활성화된 사용자입니다.');

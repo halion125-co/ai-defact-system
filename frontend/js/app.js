@@ -4,7 +4,7 @@
 import { api, onUnauthorized } from './api.js';
 import { store } from './store.js';
 import { route, setNotFound, setBeforeEach, startRouter, navigate, parseHash, buildHash } from './router.js';
-import { h, clear, toast, typeBadge, statusBadge, initials, debounce, emptyState, icon } from './ui.js';
+import { h, clear, toast, typeBadge, statusBadge, initials, debounce, emptyState, icon, openModal } from './ui.js';
 import { renderLogin } from './pages/login.js';
 import { renderDashboard } from './pages/dashboard.js';
 import { renderKanban } from './pages/kanban.js';
@@ -13,6 +13,7 @@ import { renderDetail } from './pages/detail.js';
 import { renderMy } from './pages/my.js';
 import { renderCreate } from './pages/create.js';
 import { renderSettings } from './pages/settings.js';
+import { renderDocs, openDocsModal } from './pages/docs.js';
 
 const app = document.getElementById('app');
 let shellEl = null;
@@ -45,6 +46,7 @@ function renderShell() {
     if (item.children) {
       const sub = h('div', { class: 'nav-sub' });
       for (const c of item.children) {
+        if (c.query && c.query.tab === 'assigned' && !store.isResponder) continue; // 조치자가 아니면 "내가 조치" 메뉴 숨김
         const q = c.query ? `?${new URLSearchParams(c.query)}` : '';
         sub.append(h('a', { class: `nav-item${isActive(c.path, c.query, cur) && cur.path === c.path ? ' active' : ''}`, href: `#${c.path}${q}` }, c.label));
       }
@@ -56,11 +58,16 @@ function renderShell() {
     nav.append(h('div', { class: 'nav-section' }, 'Admin'));
     nav.append(h('a', { class: `nav-item${cur.path === '/settings' ? ' active' : ''}`, href: '#/settings' }, h('span', { class: 'ico' }, icon('gear', { size: 15 })), '설정'));
   }
+  const guideNav = h('div', { class: 'sidebar-guides' },
+    h('div', { class: 'nav-section' }, 'GUIDES'),
+    h('button', { type: 'button', class: 'nav-item', onClick: () => openDocsModal('help') }, h('span', { class: 'ico' }, icon('question', { size: 15 })), '도움말'),
+    h('button', { type: 'button', class: 'nav-item', onClick: () => openDocsModal('developer') }, h('span', { class: 'ico' }, icon('code', { size: 15 })), '개발자 센터')
+  );
   const foot = h('div', { class: 'sidebar-foot' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT', width: 36 }), h('span', {}, 'v1.0'));
-  sidebar.append(brand, nav, foot);
+  sidebar.append(brand, nav, guideNav, foot);
   // 모바일: 메뉴 클릭 시 사이드바 자동으로 닫기
   sidebar.addEventListener('click', (e) => {
-    if (e.target.closest('a.nav-item')) closeSidebar();
+    if (e.target.closest('.nav-item')) closeSidebar();
   });
 
   // Header
@@ -152,7 +159,7 @@ function ensureShell() {
   else {
     // active 메뉴 갱신
     const cur = parseHash();
-    shellEl.querySelectorAll('.nav a.nav-item').forEach((a) => {
+    shellEl.querySelectorAll('a.nav-item').forEach((a) => {
       const href = a.getAttribute('href').slice(1);
       const [path, qs = ''] = href.split('?');
       const tab = new URLSearchParams(qs).get('tab');
@@ -199,6 +206,7 @@ route('/my', mount(renderMy));
 route('/new', mount(renderCreate));
 route('/new/:type', mount(renderCreate));
 route('/settings', mount(renderSettings));
+route('/help', mount(renderDocs));
 setNotFound(mount(async (main) => main.append(emptyState('페이지를 찾을 수 없습니다.', null, h('a', { class: 'btn btn-primary', href: '#/dashboard' }, 'Dashboard로 이동')))));
 
 const PENDING_KEY = 'dms.pendingRoute';
@@ -237,6 +245,65 @@ function afterLogin() {
   }
   if (pending && pending.startsWith('#/') && !pending.startsWith('#/start')) location.hash = pending;
   else navigate('/issues/kanban', {}, { replace: true });
+  showLoginAlerts();
+}
+
+const LOGIN_ALERT_SHOWN_KEY = 'dms.loginAlertShownThisSession';
+/**
+ * 로그인 직후 1회, 해당되는 항목(공지사항 포함)이 있을 때만 안내 팝업.
+ * "오늘 하루 보지 않기" 선택 시 당일 재노출 안함(공지 내용이 바뀌면 그 날짜로 다시 노출).
+ * 브라우저 탭 세션당 1회로 제한(새로고침 시 반복 노출 방지).
+ */
+async function showLoginAlerts() {
+  const user = store.user;
+  if (!user) return;
+  try {
+    if (sessionStorage.getItem(LOGIN_ALERT_SHOWN_KEY) === user.userId) return;
+    sessionStorage.setItem(LOGIN_ALERT_SHOWN_KEY, user.userId);
+  } catch {
+    /* ignore */
+  }
+  let data;
+  try {
+    data = await api.my.loginAlerts();
+  } catch {
+    return;
+  }
+  const dismissTag = data.announcement ? `ann:${data.announcement.updatedAt}` : 'none';
+  if (store.isLoginAlertDismissedToday(user.userId, dismissTag)) return;
+
+  const rows = [];
+  if (!user.isQualityAdmin) {
+    if (data.draftCount > 0) rows.push({ text: `임시저장된 Issue가 ${data.draftCount}건 있습니다. 등록을 완료해주세요.`, href: '#/my?tab=reported' });
+    if (data.actionableCount > 0) rows.push({ text: `내가 조치하거나 확인해야 할 Issue가 ${data.actionableCount}건 있습니다.`, href: '#/my?tab=assigned' });
+  } else if (data.longUnassignedCount > 0) {
+    rows.push({ text: `담당자가 ${data.longUnassignedDays}근무일 이상 지정되지 않은 Issue가 ${data.longUnassignedCount}건 있습니다.`, href: '#/issues/kanban?quick=unassigned' });
+  }
+  if (!rows.length && !data.announcement) return;
+
+  let close = () => {};
+  const dontShow = h('input', { type: 'checkbox', id: 'login-alert-dismiss' });
+  const sections = [];
+  if (data.announcement) {
+    sections.push(
+      h(
+        'div',
+        { class: 'login-announcement' },
+        h('div', { class: 'title' }, icon('warn', { size: 14 }), data.announcement.title || '공지사항'),
+        h('div', { class: 'msg' }, data.announcement.message)
+      )
+    );
+  }
+  if (rows.length) {
+    sections.push(h('div', { class: 'login-alert-list' }, ...rows.map((r) => h('a', { class: 'login-alert-row', href: r.href, onClick: () => close() }, icon('warn', { size: 14 }), h('span', {}, r.text)))));
+  }
+  const body = h('div', {}, ...sections, h('label', { class: 'checkbox small mt-16', for: 'login-alert-dismiss' }, dontShow, '오늘 하루 보지 않기'));
+  close = openModal({
+    title: '확인이 필요한 소식',
+    body,
+    actions: [{ label: '닫기', variant: 'btn-primary', onClick: (c) => c() }],
+    onClose: () => { if (dontShow.checked) store.dismissLoginAlertToday(user.userId, dismissTag); },
+  });
 }
 
 onUnauthorized(() => {

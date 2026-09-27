@@ -42,7 +42,7 @@ class UserRepository {
     return u ? { ...u } : null;
   }
 
-  async create({ employeeId, name, team, isQualityAdmin = false }) {
+  async create({ employeeId, name, team, isQualityAdmin = false, isResponder = false }) {
     return this.mutex.withLock('users', async () => {
       if (this.findByEmployeeId(employeeId)) {
         const err = new Error('DUPLICATE_EMPLOYEE_ID');
@@ -57,6 +57,7 @@ class UserRepository {
         name,
         team,
         isQualityAdmin: !!isQualityAdmin,
+        isResponder: !!isResponder,
         active: true,
         createdAt: now,
         updatedAt: now,

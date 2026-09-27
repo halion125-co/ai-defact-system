@@ -164,20 +164,20 @@ test('dashboard 계산: daily/burnup/current unresolved/reopen', async () => {
   }
   await W.close(r, i1, { expectedRevision: rev(i1), closeType: 'VERIFIED' });
   await W.reopen(r, i2, { expectedRevision: rev(i2), reason: '재발' });
-  const s = c.dashboardService.summary({});
+  const s = c.dashboardService.summary({}, a);
   assert.equal(s.total, 3);
   assert.equal(s.status.closed, 1);
   assert.equal(s.status.inProgress, 1);
   assert.equal(s.attention.reopened, 1);
   assert.equal(s.attention.unassigned, 1);
   assert.equal(s.attention.currentlyUnresolved, 2);
-  const b = c.dashboardService.burnup({});
+  const b = c.dashboardService.burnup({}, a);
   const last = b.items[b.items.length - 1];
   assert.equal(last.createdCumulative, 3);
   assert.equal(last.resolvedCumulative, 2, 'Re-open되어도 누적 조치는 감소하지 않음');
   assert.equal(b.current.currentlyUnresolved, 2);
   assert.equal(b.current.gap, 1);
-  const daily = c.dashboardService.daily({});
+  const daily = c.dashboardService.daily({}, a);
   const today = daily.items[daily.items.length - 1];
   assert.equal(today.created, 3);
   assert.equal(today.resolved, 2);

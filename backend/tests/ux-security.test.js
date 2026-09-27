@@ -18,7 +18,7 @@ async function setup() {
   await promoteToAdmin(c, 'admin');
   await rep.post('/api/users', { employeeId: '10001', name: '이영희', team: '업무팀' });
   await dev.post('/api/users', { employeeId: '20001', name: '홍길동', team: '개발팀' });
-  await other.post('/api/users', { employeeId: '30001', name: '박민수', team: '테스트팀' });
+  await other.post('/api/users', { employeeId: '30001', name: '박민수', team: '테스트팀', isResponder: true });
   return { c, srv, admin, rep, dev, other };
 }
 
@@ -32,16 +32,17 @@ test('여러 줄/빈 줄/탭/CRLF 입력이 저장·조회·수정에서 그대�
   const r = await rep.post('/api/issues/defects', { ...DEFECT_BODY, symptom, expectedResult: expected });
   assert.equal(r.status, 201);
   const d = (await rep.get(`/api/issues/${r.body.id}`)).body.issue;
-  assert.equal(d.symptom, '첫 줄 현상 설명입니다.\n\n두 번째 문단.\n\t들여쓴 줄\n\n세 번째 문단 (빈 줄 3개 이상 → 2개로 축약)\n마지막 줄');
+  // 발생 현상은 리치 텍스트(HTML)로 저장되며, 개행은 <br>로 변환되고 cleanText와 동일한 빈 줄 축약 규칙이 적용된다.
+  assert.equal(d.symptom, '첫 줄 현상 설명입니다.<br><br>두 번째 문단.<br>\t들여쓴 줄<br><br>세 번째 문단 (빈 줄 3개 이상 → 2개로 축약)<br>마지막 줄');
   assert.equal(d.expectedResult, expected);
   assert.equal(d.title, '첫 줄 현상 설명입니다.', '제목은 첫 줄');
   // 수정 왕복: 동일 내용 재전송 → 변경 없음(400), 한 줄 추가 → UPDATED + before/after 보존
   const same = await rep.patch(`/api/issues/${r.body.id}`, { expectedRevision: 1, changes: { symptom: d.symptom } });
   assert.equal(same.status, 400);
-  const upd = await rep.patch(`/api/issues/${r.body.id}`, { expectedRevision: 1, changes: { symptom: d.symptom + '\n\n추가된 문단' } });
+  const upd = await rep.patch(`/api/issues/${r.body.id}`, { expectedRevision: 1, changes: { symptom: d.symptom + '<br><br>추가된 문단' } });
   assert.equal(upd.status, 200);
   const d2 = (await rep.get(`/api/issues/${r.body.id}`)).body.issue;
-  assert.equal(d2.symptom, d.symptom + '\n\n추가된 문단');
+  assert.equal(d2.symptom, d.symptom + '<br><br>추가된 문단');
   const ev = d2.history.at(-1);
   assert.equal(ev.eventType, 'UPDATED');
   assert.equal(ev.before.symptom, d.symptom);
@@ -55,7 +56,7 @@ test('단독 CR(구형 편집기)·유니코드·이모지·긴 URL 붙여넣기
   const r = await rep.post('/api/issues/defects', { ...DEFECT_BODY, symptom: `줄1\r줄2\r줄3 🐞🔥 ${url}`, location: '고객관리\r> 조회' });
   assert.equal(r.status, 201);
   const d = (await rep.get(`/api/issues/${r.body.id}`)).body.issue;
-  assert.equal(d.symptom, `줄1\n줄2\n줄3 🐞🔥 ${url}`);
+  assert.equal(d.symptom, `줄1<br>줄2<br>줄3 🐞🔥 ${url}`);
   assert.equal(d.location, '고객관리 > 조회', '단일행 필드의 개행은 공백');
   assert.equal(d.title, '줄1');
   // 이모지 경계 제목 자르기

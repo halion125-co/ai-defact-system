@@ -78,6 +78,11 @@ export const store = {
     return !!(this.user && this.user.isQualityAdmin);
   },
 
+  /** 조치자 여부. Admin은 항상 조치자로 취급(전체 조회 가능). */
+  get isResponder() {
+    return !!(this.user && (this.user.isQualityAdmin || this.user.isResponder));
+  },
+
   envName(id) {
     const e = (this.project && this.project.environments.find((x) => x.id === id)) || null;
     return e ? e.displayName : id || '-';
@@ -111,6 +116,28 @@ export const store = {
       return raw ? JSON.parse(raw) : null;
     } catch {
       return null;
+    }
+  },
+
+  /**
+   * 로그인 알림 팝업 "오늘 하루 보지 않기" — 사용자+날짜+내용태그 단위로 기억(브라우저 단위).
+   * tag에 공지사항 갱신시각 등을 포함하면, 내용이 바뀔 때 당일이라도 다시 노출된다.
+   */
+  dismissLoginAlertToday(userId, tag = 'default') {
+    try {
+      localStorage.setItem(`dms.loginAlertDismiss.${userId}`, JSON.stringify({ date: new Date().toDateString(), tag }));
+    } catch {
+      /* ignore */
+    }
+  },
+  isLoginAlertDismissedToday(userId, tag = 'default') {
+    try {
+      const raw = localStorage.getItem(`dms.loginAlertDismiss.${userId}`);
+      if (!raw) return false;
+      const saved = JSON.parse(raw);
+      return saved.date === new Date().toDateString() && saved.tag === tag;
+    } catch {
+      return false;
     }
   },
 };

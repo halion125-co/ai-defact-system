@@ -3,7 +3,7 @@
 const { errors } = require('../utils/errors');
 const { nowIso } = require('../utils/time');
 const { padNumber, formatIssueId } = require('../utils/id');
-const { makeTitle } = require('../utils/text');
+const { makeTitle, richTextToPlainText } = require('../utils/text');
 const V = require('../validators/validators');
 const P = require('../permissions/permissions');
 const { ISSUE_PREFIX, STATUS, PRIORITY, EVENT, DEPLOYMENT_STATUS } = require('../models/constants');
@@ -111,7 +111,7 @@ class IssueService {
 
   async createDefect(user, body) {
     const data = V.defectCreate(body, this.configService.activeEnvironments());
-    const title = makeTitle(data.symptom);
+    const title = makeTitle(richTextToPlainText(data.symptom));
     return this._createBase('DEFECT', user, data, title);
   }
 
@@ -126,7 +126,7 @@ class IssueService {
   }
 
   _draftTitle(type, data) {
-    const src = type === 'DEFECT' ? data.symptom : type === 'IMPROVEMENT' ? data.request : data.question;
+    const src = type === 'DEFECT' ? richTextToPlainText(data.symptom) : type === 'IMPROVEMENT' ? data.request : data.question;
     return src ? makeTitle(src) : '(제목 없음, 임시저장)';
   }
 
@@ -246,7 +246,7 @@ class IssueService {
         iss[k] = v;
       }
       if (Object.keys(after).length === 0) throw errors.validation('변경된 내용이 없습니다.');
-      if (after.symptom) iss.title = makeTitle(after.symptom);
+      if (after.symptom) iss.title = makeTitle(richTextToPlainText(after.symptom));
       if (after.request) iss.title = makeTitle(after.request);
       if (after.question) iss.title = makeTitle(after.question);
       ctx.event(EVENT.UPDATED, { before, after, data: { fields: Object.keys(after), byAdmin: !!user.isQualityAdmin && !P.isReporter(user, iss) } });

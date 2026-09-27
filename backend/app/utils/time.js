@@ -98,4 +98,20 @@ function daysBetween(fromIso, toIso) {
   return (new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86400000;
 }
 
-module.exports = { setDefaultTimezone, nowIso, toIso, dateKey, parseDate, dayRange, addDays, daysBetween, pad };
+/** fromIso ~ toIso 사이 주말(토/일)을 제외한 근무일수(프로젝트 timezone 기준 날짜 경계로 셈) */
+function businessDaysBetween(fromIso, toIso, tz = DEFAULT_TZ) {
+  const from = parseDate(fromIso);
+  const to = parseDate(toIso);
+  if (!from || !to || to <= from) return 0;
+  let cur = dateKey(from.toISOString(), tz);
+  const endKey = dateKey(to.toISOString(), tz);
+  let count = 0;
+  while (cur < endKey) {
+    const wd = new Date(`${cur}T12:00:00Z`).getUTCDay();
+    if (wd !== 0 && wd !== 6) count++;
+    cur = addDays(cur, 1);
+  }
+  return count;
+}
+
+module.exports = { setDefaultTimezone, nowIso, toIso, dateKey, parseDate, dayRange, addDays, daysBetween, businessDaysBetween, pad };

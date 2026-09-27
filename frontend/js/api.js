@@ -116,11 +116,15 @@ export const api = {
     attention: (p) => request('GET', '/api/dashboard/attention' + qs(p)),
   },
   search: (q, limit = 10) => request('GET', '/api/search' + qs({ q, limit })),
-  my: { counts: () => request('GET', '/api/my/counts') },
+  my: { counts: () => request('GET', '/api/my/counts'), loginAlerts: () => request('GET', '/api/my/login-alerts') },
   admin: {
     backupStatus: () => request('GET', '/api/admin/backup/status'),
     runBackup: () => request('POST', '/api/admin/backup/run', { body: {} }),
     audit: (p) => request('GET', '/api/admin/audit' + qs(p)),
     health: () => request('GET', '/api/admin/health'),
+    externalApi: () => request('GET', '/api/admin/external-api'),
+    issueExternalApiKey: () => request('POST', '/api/admin/external-api/issue', { body: {} }),
+    revokeExternalApiKey: () => request('POST', '/api/admin/external-api/revoke', { body: {} }),
+    setExternalApiEnabled: (enabled) => request('PUT', '/api/admin/external-api/enabled', { body: { enabled } }),
   },
 };

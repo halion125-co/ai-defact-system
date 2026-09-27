@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const crypto = require('crypto');
 const { readJson, writeJsonAtomic, ensureDir } = require('../utils/fsutil');
 const { nowIso } = require('../utils/time');
 
@@ -33,8 +34,21 @@ function defaultOperation() {
     allowedExtensions: ['png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'log', 'csv', 'xlsx', 'docx', 'pptx', 'zip'],
     enableChangeReference: true,
     enableDeployment: true,
+    loginAlertsEnabled: true,
+    announcement: { enabled: false, title: '', message: '' },
     timezone: 'Asia/Seoul',
     backup: { enabled: true, retainDays: 30 },
+    updatedAt: nowIso(),
+    revision: 1,
+  };
+}
+
+/** 외부 연동(External API) 설정. operation과 분리해 일반 사용자 GET(/api/config/operation)에 노출되지 않도록 한다. */
+function defaultExternalApi() {
+  return {
+    enabled: false,
+    apiKey: null,
+    createdAt: null,
     updatedAt: nowIso(),
     revision: 1,
   };
@@ -45,22 +59,27 @@ class ConfigRepository {
     this.dir = path.join(dataDir, 'config');
     this.projectFile = path.join(this.dir, 'project.json');
     this.operationFile = path.join(this.dir, 'operation.json');
+    this.externalApiFile = path.join(this.dir, 'external-api.json');
     this.mutex = mutex;
     this.project = null;
     this.operation = null;
+    this.externalApi = null;
   }
 
   load() {
     ensureDir(this.dir);
     const p = readJson(this.projectFile);
     const o = readJson(this.operationFile);
+    const x = readJson(this.externalApiFile);
     this.project = p || defaultProject();
     this.operation = { ...defaultOperation(), ...(o || {}) };
+    this.externalApi = { ...defaultExternalApi(), ...(x || {}) };
     if (!Array.isArray(this.project.environments) || !Array.isArray(this.project.priorities)) {
       throw new Error('project.json 형식 오류');
     }
     if (!p) writeJsonAtomic(this.projectFile, this.project);
     if (!o) writeJsonAtomic(this.operationFile, this.operation);
+    if (!x) writeJsonAtomic(this.externalApiFile, this.externalApi);
   }
 
   getProject() {
@@ -92,6 +111,30 @@ class ConfigRepository {
       return this.getOperation();
     });
   }
+
+  getExternalApi() {
+    return JSON.parse(JSON.stringify(this.externalApi));
+  }
+
+  async saveExternalApi(mutator) {
+    return this.mutex.withLock('config-external-api', async () => {
+      const next = mutator(this.getExternalApi());
+      next.revision = (this.externalApi.revision || 0) + 1;
+      next.updatedAt = nowIso();
+      writeJsonAtomic(this.externalApiFile, next);
+      this.externalApi = next;
+      return this.getExternalApi();
+    });
+  }
+
+  /** 요청 헤더의 API Key와 상수 시간 비교(타이밍 공격 방지). */
+  verifyApiKey(key) {
+    if (!key || !this.externalApi.enabled || !this.externalApi.apiKey) return false;
+    const a = Buffer.from(String(key));
+    const b = Buffer.from(String(this.externalApi.apiKey));
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  }
 }
 
-module.exports = { ConfigRepository, defaultProject, defaultOperation };
+module.exports = { ConfigRepository, defaultProject, defaultOperation, defaultExternalApi };

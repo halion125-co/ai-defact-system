@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { store } from '../store.js';
 import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, TYPE_LABEL, STATUS_LABEL, icon } from '../ui.js';
+import { openIssuePreview } from '../issuePreview.js';
 
 const DRILL_KEYS = {
   unassigned: '담당자 미지정',
@@ -30,12 +31,14 @@ export function buildFilterBar(query, onChange, { compact = false, hideStatus = 
   if (!hideStatus) bar.append(sel('status', '상태 전체', [...Object.entries(STATUS_LABEL).filter(([value]) => value !== 'DRAFT').map(([value, label]) => ({ value, label })), { value: 'ALL', label: 'Cancel 포함 전체' }]));
   bar.append(sel('environmentId', '환경 전체', (store.project ? store.project.environments : []).map((e) => ({ value: e.id, label: e.displayName }))));
   bar.append(sel('priority', 'Priority 전체', [...store.activePriorities().map((p) => ({ value: p.code, label: p.displayName })), { value: 'UNASSIGNED', label: '미지정' }]));
-  const assignee = h('select', { class: `input${compact ? ' input-sm' : ''}`, 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), h('option', { value: store.user.userId }, '내가 조치'));
+  const assignee = h('select', { class: `input${compact ? ' input-sm' : ''}`, 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), ...(store.isResponder ? [h('option', { value: store.user.userId }, '내가 조치')] : []));
   assignee.value = query.assignee || '';
-  api.users.list({ active: 'true' }).then(({ users }) => {
-    for (const u of users) if (u.userId !== store.user.userId) assignee.append(h('option', { value: u.userId }, `${u.name} (${u.team})`));
-    assignee.value = query.assignee || '';
-  }).catch(() => {});
+  if (store.isResponder) {
+    api.users.list({ active: 'true' }).then(({ users }) => {
+      for (const u of users) if (u.userId !== store.user.userId) assignee.append(h('option', { value: u.userId }, `${u.name} (${u.team})`));
+      assignee.value = query.assignee || '';
+    }).catch(() => {});
+  }
   assignee.addEventListener('change', () => onChange({ ...query, assignee: assignee.value, page: undefined }));
   bar.append(assignee);
   if (!compact) {
@@ -63,12 +66,14 @@ function buildListFilters(query, go) {
   search.value = query.q || '';
   search.addEventListener('keydown', (e) => e.key === 'Enter' && go({ ...query, q: search.value.trim(), page: undefined }));
 
-  const assignee = h('select', { class: 'input', 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), h('option', { value: store.user.userId }, '내가 조치'));
+  const assignee = h('select', { class: 'input', 'aria-label': '담당자' }, h('option', { value: '' }, '담당자 전체'), h('option', { value: 'UNASSIGNED' }, '미지정'), ...(store.isResponder ? [h('option', { value: store.user.userId }, '내가 조치')] : []));
   assignee.value = query.assignee || '';
-  api.users.list({ active: 'true' }).then(({ users }) => {
-    for (const u of users) if (u.userId !== store.user.userId) assignee.append(h('option', { value: u.userId }, `${u.name} (${u.team})`));
-    assignee.value = query.assignee || '';
-  }).catch(() => {});
+  if (store.isResponder) {
+    api.users.list({ active: 'true' }).then(({ users }) => {
+      for (const u of users) if (u.userId !== store.user.userId) assignee.append(h('option', { value: u.userId }, `${u.name} (${u.team})`));
+      assignee.value = query.assignee || '';
+    }).catch(() => {});
+  }
   assignee.addEventListener('change', () => go({ ...query, assignee: assignee.value, page: undefined }));
 
   const basicRow = h(
@@ -140,9 +145,9 @@ export async function renderList(main, { query, navigate }) {
     ['title', '제목/현상'],
     ['environment', '환경'],
     ['priority', 'Priority'],
-    ['status', 'Status'],
-    ['reporter', 'Reporter'],
-    ['assignee', 'Assignee'],
+    ['status', '상태'],
+    ['reporter', '등록자'],
+    ['assignee', '조치자'],
     ['createdAt', '등록일'],
     ['updatedAt', '업데이트'],
   ];
@@ -169,15 +174,15 @@ export async function renderList(main, { query, navigate }) {
         tbody.append(
           h(
             'tr',
-            { class: 'clickable', onClick: () => navigate(`/issues/${it.id}`) },
+            { class: 'clickable', onClick: () => openIssuePreview(it, { onReload: load }) },
             h('td', { class: 'id-cell' }, h('a', { href: `#/issues/${it.id}`, onClick: (e) => e.stopPropagation() }, it.id)),
             h('td', {}, typeBadge(it.type)),
             h('td', { class: 'title-cell', title: it.title }, it.title, it.reopened ? h('span', { class: 'badge warn', style: { marginLeft: '6px' } }, 'Re-open') : null, it.commentCount ? h('span', { class: 'muted small flex', style: { marginLeft: '6px', display: 'inline-flex' } }, icon('comment', { size: 11 }), it.commentCount) : null),
             h('td', { class: 'env-cell' }, it.environment || '-'),
             h('td', {}, priorityBadge(it.priority)),
             h('td', {}, statusBadge(it.status)),
-            h('td', {}, it.reporter),
-            h('td', {}, it.assignee || h('span', { class: 'badge warn' }, '미지정')),
+            h('td', { class: 'nowrap' }, it.reporter),
+            h('td', { class: 'nowrap' }, it.assignee || h('span', { class: 'badge warn' }, '미지정')),
             h('td', { class: 'nowrap' }, fmtDate(it.createdAt)),
             h('td', { class: 'nowrap muted' }, fmtDateTime(it.updatedAt))
           )

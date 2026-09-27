@@ -2,7 +2,8 @@
 
 const { errors } = require('../utils/errors');
 const V = require('../validators/validators');
-const { setDefaultTimezone } = require('../utils/time');
+const { setDefaultTimezone, nowIso } = require('../utils/time');
+const { randomToken } = require('../utils/id');
 
 class ConfigService {
   constructor({ configRepo, issueRepo, logger }) {
@@ -127,10 +128,46 @@ class ConfigService {
     const rev = V.optionalRevision(body);
     const updated = await this.configRepo.saveOperation((o) => {
       if (rev !== undefined && rev !== o.revision) throw errors.revisionConflict(o.revision);
-      return { ...o, ...changes, backup: { ...o.backup, ...(changes.backup || {}) } };
+      return {
+        ...o,
+        ...changes,
+        backup: { ...o.backup, ...(changes.backup || {}) },
+        announcement: changes.announcement ? { ...changes.announcement, updatedAt: nowIso() } : o.announcement,
+      };
     });
     if (this.logger) this.logger.info('운영 설정 변경', { actor: user.userId, fields: Object.keys(changes) });
     return updated;
+  }
+
+  /** 외부 연동 API Key 상태 조회. 실제 Key 값은 발급 직후 1회만 반환하고, 이후에는 마스킹된 미리보기만 제공한다. */
+  getExternalApiStatus(user) {
+    this.requireAdmin(user);
+    const x = this.configRepo.getExternalApi();
+    return { enabled: x.enabled, hasKey: !!x.apiKey, keyPreview: x.apiKey ? `${x.apiKey.slice(0, 4)}${'*'.repeat(Math.max(0, x.apiKey.length - 8))}${x.apiKey.slice(-4)}` : null, createdAt: x.createdAt, updatedAt: x.updatedAt };
+  }
+
+  /** 신규 API Key 발급(기존 Key는 즉시 폐기). Key 원문은 이 응답에서만 반환된다. */
+  async issueExternalApiKey(user) {
+    this.requireAdmin(user);
+    const apiKey = randomToken(24);
+    await this.configRepo.saveExternalApi((x) => ({ ...x, enabled: true, apiKey, createdAt: nowIso() }));
+    if (this.logger) this.logger.info('외부 API Key 발급', { actor: user.userId });
+    return { apiKey };
+  }
+
+  async revokeExternalApiKey(user) {
+    this.requireAdmin(user);
+    await this.configRepo.saveExternalApi((x) => ({ ...x, enabled: false, apiKey: null }));
+    if (this.logger) this.logger.info('외부 API Key 폐기', { actor: user.userId });
+    return { ok: true };
+  }
+
+  async setExternalApiEnabled(user, enabled) {
+    this.requireAdmin(user);
+    const x = this.configRepo.getExternalApi();
+    if (enabled && !x.apiKey) throw errors.validation('먼저 API Key를 발급해주세요.');
+    await this.configRepo.saveExternalApi((cur) => ({ ...cur, enabled: !!enabled }));
+    return { ok: true };
   }
 }
 

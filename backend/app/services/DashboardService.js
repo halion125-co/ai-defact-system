@@ -19,13 +19,13 @@ class DashboardService {
     this.configService = configService;
   }
 
-  _base(query) {
+  _base(query, user) {
     const q = { ...query };
     if (!q.type) q.type = 'DEFECT'; // 기본 결함. 'ALL'이면 결함+개선요청+문의 통합
     if (q.dateFrom) q.createdFrom = q.dateFrom;
     if (q.dateTo) q.createdTo = q.dateTo;
     const operation = this.configService.getOperation();
-    const issues = Q.applyFilters(this.issueRepo.all(), q, { operation });
+    const issues = Q.applyFilters(this.issueRepo.all(), q, { operation, user });
     return { issues, operation, filter: q };
   }
 
@@ -39,8 +39,8 @@ class DashboardService {
     return { ...out, ...extra };
   }
 
-  summary(query) {
-    const { issues, operation, filter } = this._base(query);
+  summary(query, user) {
+    const { issues, operation, filter } = this._base(query, user);
     const count = (fn) => issues.filter(fn).length;
     const status = {
       open: count((i) => i.status === STATUS.OPEN),
@@ -48,7 +48,7 @@ class DashboardService {
       done: count((i) => i.status === STATUS.DONE),
       closed: count((i) => i.status === STATUS.CLOSED),
     };
-    const cancelled = Q.applyFilters(this.issueRepo.all(), { ...filter, status: STATUS.CANCEL }, { operation }).length;
+    const cancelled = Q.applyFilters(this.issueRepo.all(), { ...filter, status: STATUS.CANCEL }, { operation, user }).length;
     const totalWithCancelled = issues.length + cancelled;
     const attention = {
       criticalUnresolved: count(Q.isCriticalUnresolved),
@@ -111,8 +111,8 @@ class DashboardService {
     return days;
   }
 
-  daily(query) {
-    const { issues, filter } = this._base(query);
+  daily(query, user) {
+    const { issues, filter } = this._base(query, user);
     const days = this._dateSpan(issues, filter);
     const map = new Map(days.map((d) => [d, { date: d, created: 0, resolved: 0, closed: 0 }]));
     for (const i of issues) {
@@ -129,8 +129,8 @@ class DashboardService {
     return { items, drilldownBase: this._drill(filter, {}) };
   }
 
-  burnup(query) {
-    const { issues, filter } = this._base(query);
+  burnup(query, user) {
+    const { issues, filter } = this._base(query, user);
     const days = this._dateSpan(issues, filter);
     const createdBy = new Map();
     const resolvedBy = new Map();
@@ -168,8 +168,8 @@ class DashboardService {
     return { items: limited, current };
   }
 
-  distribution(query) {
-    const { issues, filter } = this._base(query);
+  distribution(query, user) {
+    const { issues, filter } = this._base(query, user);
     const project = this.configService.getProject();
     const status = [
       { code: STATUS.OPEN, label: 'Open', count: 0 },
@@ -198,8 +198,8 @@ class DashboardService {
     };
   }
 
-  attention(query) {
-    const { issues, operation, filter } = this._base(query);
+  attention(query, user) {
+    const { issues, operation, filter } = this._base(query, user);
     const limit = Math.min(parseInt(query.limit, 10) || 5, 50);
     const envNames = new Map(this.configService.getProject().environments.map((e) => [e.id, e.displayName]));
     const pick = (fn, sortKey = 'updatedAt') => {

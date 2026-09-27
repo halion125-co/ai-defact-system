@@ -79,6 +79,7 @@ const ICON_PATHS = {
   bulb: 'M9 18h6M10 21h4M12 3a6 6 0 00-3.5 10.9c.5.4.8 1 .8 1.6v.5h5.4v-.5c0-.6.3-1.2.8-1.6A6 6 0 0012 3z',
   // 문의(question)
   question: 'M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 2-2.5 3.5M12 17h.01M12 21a9 9 0 100-18 9 9 0 000 18z',
+  code: 'M8 9l-4 3 4 3M16 9l4 3-4 3M14 5l-4 14',
   // 검색
   search: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.35-4.35',
   // 사용자
@@ -117,6 +118,8 @@ const ICON_PATHS = {
   undo: 'M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8M3 3v5h5',
   // Timeline: 취소(x)
   x: 'M18 6L6 18M6 6l12 12',
+  // 드래그 핸들(grip, 세로 점 6개)
+  grip: 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01',
 };
 /** 이모지 대체용 인라인 SVG 아이콘. 항상 line-icon 규격(1.6~1.8 stroke)로 통일. */
 export function icon(name, { size = 14, cls = '' } = {}) {
@@ -221,16 +224,24 @@ export function toast(message, type = 'info', { action, timeout = 4000 } = {}) {
 }
 
 /* ---------- Modal ---------- */
+// 라우트(hash)가 바뀌면 열려있는 모달을 전부 닫는다(도움말 모달을 열어둔 채 다른 메뉴로 이동해도 배경 화면 위에 계속 남는 문제 방지).
+const openModals = new Set();
+window.addEventListener('hashchange', () => {
+  for (const close of [...openModals]) close();
+});
+
 export function openModal({ title, body, actions = [], wide = false, onClose } = {}) {
   const root = document.getElementById('modal-root');
   let closed = false;
   const close = () => {
     if (closed) return;
     closed = true;
+    openModals.delete(close);
     backdrop.remove();
     document.removeEventListener('keydown', onKey);
     if (onClose) onClose();
   };
+  openModals.add(close);
   const onKey = (e) => {
     if (e.key === 'Escape') close();
   };
@@ -254,6 +265,44 @@ export function openModal({ title, body, actions = [], wide = false, onClose } =
     const first = modal.querySelector('input, textarea, select, button.btn-primary');
     if (first) first.focus();
   }, 0);
+  return close;
+}
+
+/**
+ * 화면 우측에서 슬라이드되는 미리보기 패널(Kanban 카드 클릭 등). 모달과 달리 목록 컨텍스트를 유지한 채 빠르게 확인하는 용도.
+ * body는 요소 또는 () => 요소 팩토리(닫기 함수를 넘겨 내부에서 close() 호출 가능하게).
+ * 바깥 클릭/ESC/닫기 버튼으로 닫힌다.
+ */
+export function openSidePanel({ title, body, onClose } = {}) {
+  const root = document.getElementById('modal-root');
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    openModals.delete(close);
+    overlay.classList.remove('show');
+    panel.classList.remove('show');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => overlay.remove(), 200);
+    if (onClose) onClose();
+  };
+  openModals.add(close);
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+  };
+  const panel = h(
+    'aside',
+    { class: 'side-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+    h('div', { class: 'side-panel-head' }, h('h3', {}, title), h('button', { class: 'close-x', 'aria-label': '닫기', onClick: close }, '×')),
+    h('div', { class: 'side-panel-body' }, typeof body === 'function' ? body(close) : body)
+  );
+  const overlay = h('div', { class: 'side-panel-overlay', onClick: (e) => e.target === overlay && close() }, panel);
+  root.append(overlay);
+  document.addEventListener('keydown', onKey);
+  requestAnimationFrame(() => {
+    overlay.classList.add('show');
+    panel.classList.add('show');
+  });
   return close;
 }
 

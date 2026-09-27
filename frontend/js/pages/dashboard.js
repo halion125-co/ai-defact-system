@@ -73,7 +73,7 @@ export async function renderDashboard(main, { query, navigate }) {
     h('div', { class: 'mt-16' }, card(`일자별 ${typeLabel} 등록 / 조치`, dailyBody, { headRight: dailyLegend })),
     h('div', { class: 'dash-grid mt-16' }, card(`${typeLabel} Burn Up`, burnBody, { headRight: burnToggle }), card('상태 분포', statusBody)),
     h('div', { class: 'dash-grid equal' }, card('Priority 분포', prioBody), card('환경별 분포', envBody)),
-    card('관리 필요', attBody, { headRight: h('span', { class: 'small muted' }, '클릭 시 해당 목록으로 이동') })
+    card('확인할 이슈', attBody, { headRight: h('span', { class: 'small muted' }, '클릭 시 해당 목록으로 이동') })
   );
 
   const kpiCard = ({ label, labelEn, value, sub, accent, onClick, title }) =>

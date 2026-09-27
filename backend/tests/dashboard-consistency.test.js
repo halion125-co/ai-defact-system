@@ -111,7 +111,7 @@ test('유형별(DEFECT/IMPROVEMENT/INQUIRY) Dashboard 집계가 원본과 일치
   const { admin } = await seed(c);
   for (const type of ['DEFECT', 'IMPROVEMENT', 'INQUIRY']) {
     const exp = expectedFor(c, type);
-    const s = c.dashboardService.summary({ type });
+    const s = c.dashboardService.summary({ type }, admin);
     assert.equal(s.total, exp.total, `${type} total`);
     assert.equal(s.cancelled, exp.cancelled, `${type} cancelled`);
     assert.deepEqual(s.status, { open: exp.open, inProgress: exp.inProgress, done: exp.done, closed: exp.closed }, `${type} status`);
@@ -124,22 +124,22 @@ test('유형별(DEFECT/IMPROVEMENT/INQUIRY) Dashboard 집계가 원본과 일치
       assert.equal(c.issueService.list(admin, s.drilldown[key]).total, val, `${type} drilldown ${key}`);
     }
     // 분포 합계 = activeTotal (상태), Priority 합계 = activeTotal, 환경 합계 = activeTotal(환경 있는 유형만) — 분포 차트는 Cancel 제외
-    const dist = c.dashboardService.distribution({ type });
+    const dist = c.dashboardService.distribution({ type }, admin);
     assert.equal(dist.status.reduce((a, b) => a + b.count, 0), exp.activeTotal);
     assert.equal(dist.priority.reduce((a, b) => a + b.count, 0), exp.activeTotal);
     if (type === 'DEFECT') assert.equal(dist.environment.reduce((a, b) => a + b.count, 0), exp.activeTotal);
   }
   // 세 유형 합 = 전체(Cancel 포함, KPI "전체" 카드 기준)
-  const totals = ['DEFECT', 'IMPROVEMENT', 'INQUIRY'].map((t) => c.dashboardService.summary({ type: t }).total);
+  const totals = ['DEFECT', 'IMPROVEMENT', 'INQUIRY'].map((t) => c.dashboardService.summary({ type: t }, admin).total);
   assert.equal(totals.reduce((a, b) => a + b, 0), c.repos.issueRepo.all().length);
   assert.deepEqual(totals, [6, 2, 1]);
 });
 
 test('Burn Up: 누적 등록/조치/Closed가 원본 날짜와 일치하고 단조 증가, Re-open 후에도 누적 조치 유지', async () => {
   const c = makeContainer();
-  await seed(c);
+  const { admin } = await seed(c);
   const exp = expectedFor(c, 'DEFECT');
-  const b = c.dashboardService.burnup({ type: 'DEFECT' });
+  const b = c.dashboardService.burnup({ type: 'DEFECT' }, admin);
   const last = b.items.at(-1);
   assert.equal(last.createdCumulative, exp.activeTotal);
   assert.equal(last.resolvedCumulative, exp.resolvedEver, 'd2(re-open) + d3 + d4 = 3');
@@ -163,24 +163,23 @@ test('Burn Up: 누적 등록/조치/Closed가 원본 날짜와 일치하고 단�
     assert.ok(b.items[i].closedCumulative >= b.items[i - 1].closedCumulative);
   }
   // 일자별 합계 = 누적 마지막 값
-  const d = c.dashboardService.daily({ type: 'DEFECT' });
+  const d = c.dashboardService.daily({ type: 'DEFECT' }, admin);
   assert.equal(d.items.reduce((a, x) => a + x.created, 0), exp.activeTotal);
   assert.equal(d.items.reduce((a, x) => a + x.resolved, 0), exp.resolvedEver);
   assert.equal(d.items.reduce((a, x) => a + x.closed, 0), exp.closedEver);
   // resolvedOn drill-down: 해당 일자 최초 조치 건수와 일치
-  const admin = c.userService.list({}).find((u) => u.isQualityAdmin);
   for (const it of d.items) {
     if (it.resolved) assert.equal(c.issueService.list(admin, { ...d.drilldownBase, resolvedOn: it.date }).total, it.resolved);
     if (it.created) assert.equal(c.issueService.list(admin, { ...d.drilldownBase, createdOn: it.date }).total, it.created);
   }
   // 개선/문의 Burn Up: 조치 없음 → resolved 0, 등록 누적만
-  const bi = c.dashboardService.burnup({ type: 'IMPROVEMENT' });
+  const bi = c.dashboardService.burnup({ type: 'IMPROVEMENT' }, admin);
   assert.equal(bi.items.at(-1).createdCumulative, 2);
   assert.equal(bi.items.at(-1).resolvedCumulative, 0);
-  assert.equal(c.dashboardService.burnup({ type: 'INQUIRY' }).current.total, 1);
+  assert.equal(c.dashboardService.burnup({ type: 'INQUIRY' }, admin).current.total, 1);
   // 기간 필터: 최근 5일 → createdAt 기준 집합만
   const from = dateKey(daysAgo(5));
-  const bf = c.dashboardService.burnup({ type: 'DEFECT', dateFrom: from });
+  const bf = c.dashboardService.burnup({ type: 'DEFECT', dateFrom: from }, admin);
   assert.equal(bf.current.total, c.repos.issueRepo.all().filter((i) => i.type === 'DEFECT' && i.status !== 'CANCEL' && dateKey(i.createdAt) >= from).length);
 });
 
@@ -193,7 +192,7 @@ test('관리자 설정(Priority 단계명·환경명·프로젝트명)이 목록
     { code: 'MAJOR', displayName: '중요(P2)', description: '', active: true, order: 2 },
     { code: 'MINOR', displayName: '경미(P3)', description: '', active: false, order: 3 },
   ] });
-  const dist = c.dashboardService.distribution({ type: 'DEFECT' });
+  const dist = c.dashboardService.distribution({ type: 'DEFECT' }, admin);
   assert.deepEqual(dist.priority.map((p) => [p.code, p.label, p.count]), [['CRITICAL', '긴급(P1)', 1], ['MAJOR', '중요(P2)', 1], ['MINOR', '경미(P3)', 1], ['UNASSIGNED', '미지정', 2]], '코드 유지 + 표시명 변경, 비활성(Minor) 기존 건 유지');
   // 비활성 Priority 신규 지정 불가, 기존 Issue 값 유지
   const dev = c.userService.list({}).find((u) => u.employeeId === '20001');
@@ -207,19 +206,19 @@ test('관리자 설정(Priority 단계명·환경명·프로젝트명)이 목록
   assert.ok(listed.items.every((i) => i.environment === '테스트계(TB)'), '목록 환경명 갱신');
   const detail = c.issueService.getDetail(admin, ids.d1).issue;
   assert.equal(detail.environment.displayNameSnapshot, '테스트계', '스냅샷은 등록 당시 이름 유지(이력용)');
-  const env = c.dashboardService.distribution({ type: 'DEFECT' }).environment.find((e) => e.code === 'ENV-TEST');
+  const env = c.dashboardService.distribution({ type: 'DEFECT' }, admin).environment.find((e) => e.code === 'ENV-TEST');
   assert.equal(env.label, '테스트계(TB)');
   assert.equal(env.count, 2);
   // 환경 추가 → 분포에 0건으로 표시(활성), 비활성+0건은 숨김
   await c.configService.addEnvironment(admin, { displayName: '운영계', code: 'PROD' });
-  let envs = c.dashboardService.distribution({ type: 'DEFECT' }).environment;
+  let envs = c.dashboardService.distribution({ type: 'DEFECT' }, admin).environment;
   assert.ok(envs.some((e) => e.code === 'ENV-PROD' && e.count === 0));
   await c.configService.updateEnvironment(admin, 'ENV-PROD', { active: false });
-  envs = c.dashboardService.distribution({ type: 'DEFECT' }).environment;
+  envs = c.dashboardService.distribution({ type: 'DEFECT' }, admin).environment;
   assert.ok(!envs.some((e) => e.code === 'ENV-PROD'), '비활성 + 0건 환경은 분포에서 제외');
   // 참조 중 환경 비활성화 → 분포에는 남고(건수 있음) 신규 등록 불가
   await c.configService.updateEnvironment(admin, 'ENV-VERIFY', { active: false });
-  envs = c.dashboardService.distribution({ type: 'DEFECT' }).environment;
+  envs = c.dashboardService.distribution({ type: 'DEFECT' }, admin).environment;
   assert.ok(envs.some((e) => e.code === 'ENV-VERIFY' && e.count === 1), 'd2(활성) 1건, d5는 Cancel');
   const rep = c.userService.list({}).find((u) => u.employeeId === '10001');
   await assert.rejects(c.issueService.createDefect(rep, { ...DEFECT_BODY, environmentId: 'ENV-VERIFY' }), /발생 환경/);
@@ -259,23 +258,23 @@ test('개선요청/문의의 조치 완료·Close도 KPI/일자별/Burn Up 처�
   await W.close(admin, inq2, { expectedRevision: rev(inq2), closeType: 'AGREED', comment: '문의자 확인 후 종료 합의' });
 
   // IMPROVEMENT: 3건(기존 2 + 1) 중 조치 1, Closed 1
-  const si = c.dashboardService.summary({ type: 'IMPROVEMENT' });
+  const si = c.dashboardService.summary({ type: 'IMPROVEMENT' }, admin);
   assert.equal(si.total, 3);
   assert.equal(si.status.closed, 1);
-  const bi = c.dashboardService.burnup({ type: 'IMPROVEMENT' });
+  const bi = c.dashboardService.burnup({ type: 'IMPROVEMENT' }, admin);
   assert.equal(bi.current.resolvedEver, 1, '개선요청 누적 조치');
   assert.equal(bi.current.closedEver, 1, '개선요청 누적 Closed');
   assert.equal(bi.items.at(-1).resolvedCumulative, 1);
-  const di = c.dashboardService.daily({ type: 'IMPROVEMENT' });
+  const di = c.dashboardService.daily({ type: 'IMPROVEMENT' }, admin);
   assert.equal(di.items.reduce((a, x) => a + x.resolved, 0), 1);
   assert.equal(di.items.reduce((a, x) => a + x.closed, 0), 1);
   // INQUIRY: 3건 중 Done 1, Closed 1 → 누적 조치 2, Closed 1, 재검증대기(Done) 1
-  const sq = c.dashboardService.summary({ type: 'INQUIRY' });
+  const sq = c.dashboardService.summary({ type: 'INQUIRY' }, admin);
   assert.equal(sq.total, 3);
   assert.equal(sq.status.done, 1);
   assert.equal(sq.status.closed, 1);
   assert.equal(sq.attention.waitingVerification + sq.attention.waitingDeploy, 1);
-  const bq = c.dashboardService.burnup({ type: 'INQUIRY' });
+  const bq = c.dashboardService.burnup({ type: 'INQUIRY' }, admin);
   assert.equal(bq.current.resolvedEver, 2, '문의 누적 조치(Done 도달 2건)');
   assert.equal(bq.current.closedEver, 1);
   assert.equal(bq.current.gap, 1);
@@ -283,13 +282,13 @@ test('개선요청/문의의 조치 완료·Close도 KPI/일자별/Burn Up 처�
   assert.equal(c.issueService.list(admin, { type: 'INQUIRY', resolvedEver: 'true' }).total, 2);
   assert.equal(c.issueService.list(admin, { type: 'IMPROVEMENT', status: 'CLOSED' }).total, 1);
   // ALL: 결함 6(Cancel 1건 포함) + 개선 3 + 문의 3 = 12, 누적 조치 = 3 + 1 + 2 = 6
-  const sa = c.dashboardService.summary({ type: 'ALL' });
+  const sa = c.dashboardService.summary({ type: 'ALL' }, admin);
   assert.equal(sa.total, 12);
-  const ba = c.dashboardService.burnup({ type: 'ALL' });
+  const ba = c.dashboardService.burnup({ type: 'ALL' }, admin);
   assert.equal(ba.current.resolvedEver, 6);
   assert.equal(ba.current.closedEver, 1 + 1 + 1);
   assert.equal(c.issueService.list(admin, sa.drilldown.total).total, 12, 'ALL drilldown');
   assert.equal(c.issueService.list(admin, sa.drilldown.closed).total, 3);
-  const da = c.dashboardService.distribution({ type: 'ALL' });
+  const da = c.dashboardService.distribution({ type: 'ALL' }, admin);
   assert.equal(da.status.reduce((a, b) => a + b.count, 0), 11);
 });

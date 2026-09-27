@@ -4,6 +4,7 @@
 import { api } from '../api.js';
 import { store } from '../store.js';
 import { h, clear, pageHead, setBusy, errorMessage, toast, fmtBytes, josa, errorBox, loadingState, icon } from '../ui.js';
+import { createRichTextEditor, toDisplayHtml } from '../richText.js';
 
 function field({ label, required, help, input, q }) {
   return h('div', { class: 'field' }, h('label', { class: q ? 'q' : '', for: input.id }, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null, h('div', { class: 'error-msg hidden' }));
@@ -27,6 +28,7 @@ function fileInput(files) {
   const list = h('div', { class: 'file-list' });
   const input = h('input', { type: 'file', multiple: true, class: 'hidden', id: 'attachments' });
   const op = store.operation || {};
+  const dzErr = h('div', { class: 'dz-error hidden' });
   const renderList = () => {
     clear(list);
     files.forEach((f, i) => list.append(h('div', { class: 'file-row' }, h('span', { class: 'name' }, f.name), h('span', { class: 'muted small' }, fmtBytes(f.size)), h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onClick: () => { files.splice(i, 1); renderList(); } }, '삭제'))));
@@ -43,17 +45,49 @@ function fileInput(files) {
     h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
     h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
   );
-  return h('div', { class: 'dropzone' }, drop, input, list);
+  const zone = h('div', { class: 'dropzone' }, drop, input, dzErr, list);
+  zone.dzErr = dzErr;
+  return zone;
 }
 
-async function uploadFiles(issueId, files) {
-  if (!files.length) return;
+/** symptom 안의 pending(blob:) 이미지를 "[이미지 첨부 예정]" 자리표시자로 치환한다.
+ * 결함 생성 자체는 issueId가 있어야 첨부 업로드가 가능해서, 최초 저장 시 이미지를 실제 URL로 보낼 수 없다.
+ * 이미지를 그냥 제거하면 "이미지만 붙여넣고 설명은 안 적은" 경우 서버의 최소 글자수 검증에 걸릴 수 있어
+ * 자리표시자 텍스트로 남겨 최소 길이를 만족시키고, 업로드 완료 후 실제 이미지로 재치환한다. */
+function placeholderForPendingImages(html) {
+  return html.replace(/<img\b[^>]*data-pending-id="[^"]*"[^>]*>/g, '[이미지 첨부 예정]');
+}
+
+/** pending 이미지를 순서대로 업로드하고, {idToUrl, revision(마지막 업로드 후 최신값)}을 반환한다. */
+async function uploadPendingImages(issueId, pendingImages, startRevision) {
+  const idToUrl = new Map();
+  let revision = startRevision;
+  for (const [pendingId, { file }] of pendingImages) {
+    const fd = new FormData();
+    fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+    const res = await api.issues.upload(issueId, fd);
+    revision = res.revision;
+    const att = res.attachments && res.attachments[0];
+    if (att) idToUrl.set(pendingId, `/api/issues/${issueId}/attachments/${att.attachmentId}`);
+  }
+  return { idToUrl, revision };
+}
+
+/** 반환값: 업로드가 실제로 일어났으면 최신 revision, 업로드할 파일이 없으면 undefined. */
+async function uploadFiles(issueId, files, dzErr) {
+  if (!files.length) return undefined;
   const fd = new FormData();
   for (const f of files) fd.append('file', f, f.name);
   const res = await api.issues.upload(issueId, fd);
   if (res.rejected && res.rejected.length) {
-    toast(`일부 첨부가 거부되었습니다: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`, 'error', { timeout: 8000 });
+    const msg = `업로드 실패: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`;
+    if (dzErr) {
+      dzErr.textContent = msg;
+      dzErr.classList.remove('hidden');
+    }
+    toast(msg, 'error', { timeout: 8000 });
   }
+  return res.revision;
 }
 
 function successPanel(main, { id, title, type }, again) {
@@ -143,16 +177,21 @@ export async function renderCreate(main, { params, query, navigate }) {
 
 function renderDefectForm(main, navigate, draft) {
   const files = [];
+  const pendingImages = new Map(); // pendingId -> { file }. symptom에 붙여넣은 이미지는 제출 시 일괄 업로드 후 URL로 치환한다.
   const envs = store.activeEnvironments();
   const location = h('input', { class: 'input', id: 'location', placeholder: '예) 고객관리 > 고객정보 조회', maxlength: 200 });
   const env = h('select', { class: 'input', id: 'environmentId' }, h('option', { value: '' }, '발생 환경 선택'), ...envs.map((e) => h('option', { value: e.id }, e.displayName)));
   if (envs.length === 1) env.value = envs[0].id;
-  const symptom = h('textarea', { class: 'input', id: 'symptom', rows: 4, placeholder: '예) 고객명을 입력하고 조회 버튼을 누르면 결과가 표시되지 않고 로딩 상태가 계속됩니다.' });
+  const symptom = createRichTextEditor({
+    id: 'symptom',
+    placeholder: '예) 고객명을 입력하고 조회 버튼을 누르면 결과가 표시되지 않고 로딩 상태가 계속됩니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+    initialHtml: draft ? toDisplayHtml(draft.symptom || '') : '',
+    onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+  });
   const expected = h('textarea', { class: 'input', id: 'expectedResult', rows: 3, placeholder: '예) 조회조건에 해당하는 고객 목록이 표시되어야 합니다.' });
   if (draft) {
     location.value = draft.location || '';
     if (draft.environment) env.value = draft.environment.id;
-    symptom.value = draft.symptom || '';
     expected.value = draft.expectedResult || '';
   }
 
@@ -211,13 +250,14 @@ function renderDefectForm(main, navigate, draft) {
     addStep();
   }
 
+  const dz = fileInput(files);
   const wraps = {
     location: field({ label: '발생 위치', required: true, input: location, help: '화면/메뉴/기능 위치' }),
     environmentId: field({ label: '발생 환경', required: true, input: env }),
-    symptom: field({ label: '발생 현상', required: true, input: symptom, help: '어떤 문제가 발생했는지 적어주세요.' }),
+    symptom: field({ label: '발생 현상', required: true, input: symptom, help: '어떤 문제가 발생했는지 적어주세요. 화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.' }),
     reproductionSteps: h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수'), h('div', { class: 'error-msg hidden' })),
     expectedResult: field({ label: '기대 결과', required: true, input: expected, help: '정상이라면 어떻게 동작해야 하는지 적어주세요.' }),
-    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), fileInput(files)),
+    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), dz),
   };
   const submitLabel = draft ? '등록 완료' : '결함 등록';
   const submitBtn = h('button', { type: 'submit', class: 'btn btn-primary btn-lg' }, submitLabel);
@@ -233,10 +273,11 @@ function renderDefectForm(main, navigate, draft) {
     h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), draftBtn, submitBtn)
   );
 
-  const collect = () => ({
+  // 임시저장은 서버에 blob: 이미지를 저장할 수 없으므로(sanitizer가 거부) pending 이미지를 뺀 텍스트만 보낸다.
+  const collectForDraft = () => ({
     location: location.value.trim(),
     environmentId: env.value,
-    symptom: symptom.value.trim(),
+    symptom: symptom.rte.getValue(),
     reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
     expectedResult: expected.value.trim(),
   });
@@ -244,11 +285,12 @@ function renderDefectForm(main, navigate, draft) {
   draftBtn.addEventListener('click', async () => {
     setBusy(draftBtn, true, '임시저장');
     try {
+      if (pendingImages.size) toast('임시저장에는 붙여넣은 이미지가 첨부되지 않습니다. 등록 시 함께 저장됩니다.', 'info', { timeout: 6000 });
       if (draftId) {
-        const res = await api.issues.updateDraft(draftId, draftRevision, collect());
+        const res = await api.issues.updateDraft(draftId, draftRevision, collectForDraft());
         draftRevision = res.revision;
       } else {
-        const res = await api.issues.createDraft('DEFECT', collect());
+        const res = await api.issues.createDraft('DEFECT', collectForDraft());
         draftId = res.id;
         draftRevision = res.revision;
         navigate(`/new/defect`, { draftId }, { replace: true });
@@ -265,11 +307,18 @@ function renderDefectForm(main, navigate, draft) {
     e.preventDefault();
     clearErrors(form);
     errTop.classList.add('hidden');
-    const data = collect();
+    const symptomHtml = symptom.rte.getValue();
+    const data = {
+      location: location.value.trim(),
+      environmentId: env.value,
+      symptom: symptomHtml,
+      reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
+      expectedResult: expected.value.trim(),
+    };
     let bad = false;
     if (!data.location) { showError(wraps.location, '발생 위치를 입력해주세요.'); bad = true; }
     if (!data.environmentId) { showError(wraps.environmentId, '발생 환경을 선택해주세요.'); bad = true; }
-    if (data.symptom.length < 5) { showError(wraps.symptom, '발생 현상을 5자 이상 입력해주세요.'); bad = true; }
+    if (symptom.rte.isEmpty()) { showError(wraps.symptom, '발생 현상을 입력해주세요.'); bad = true; }
     if (data.reproductionSteps.length === 0) { showError(wraps.reproductionSteps, '재현 절차를 1단계 이상 입력해주세요.'); bad = true; }
     if (data.expectedResult.length < 5) { showError(wraps.expectedResult, '기대 결과를 5자 이상 입력해주세요.'); bad = true; }
     if (bad) {
@@ -278,13 +327,28 @@ function renderDefectForm(main, navigate, draft) {
     }
     setBusy(submitBtn, true, submitLabel);
     try {
+      // symptom에 붙여넣은 이미지는 issueId가 생기기 전까지 blob: 상태라 그대로 저장할 수 없다.
+      // 먼저 자리표시자 텍스트로 생성/제출한 뒤, 첨부 업로드 → 에디터의 실제 이미지로 치환 → symptom을 재저장하는 순서로 처리한다.
+      const hasPendingImages = symptom.rte.hasPendingImages();
+      const dataForCreate = hasPendingImages ? { ...data, symptom: placeholderForPendingImages(symptomHtml) } : data;
       const res = draftId
-        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: data })
-        : await api.issues.createDefect(data);
+        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: dataForCreate })
+        : await api.issues.createDefect(dataForCreate);
+      let latestRevision = res.revision;
       try {
-        await uploadFiles(res.id, files);
+        const up = await uploadFiles(res.id, files, dz.dzErr);
+        if (up) latestRevision = up;
       } catch (err) {
         toast(`Issue는 등록되었으나 첨부 업로드에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
+      }
+      if (hasPendingImages) {
+        try {
+          const { idToUrl, revision } = await uploadPendingImages(res.id, pendingImages, latestRevision);
+          symptom.rte.resolvePendingImages(idToUrl);
+          await api.issues.update(res.id, revision, { symptom: symptom.rte.getValue() });
+        } catch (err) {
+          toast(`Issue는 등록되었으나 붙여넣은 이미지 반영에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
+        }
       }
       toast(`${res.id} 결함이 등록되었습니다.`, 'success');
       successPanel(main, { ...res, type: 'DEFECT' }, () => { clear(main); renderDefectForm(main, navigate); });
@@ -300,7 +364,7 @@ function renderDefectForm(main, navigate, draft) {
   });
 
   main.append(
-    pageHead(draft ? '임시저장 이어 작성 · 결함' : '결함 등록', '문제를 다른 사람이 다시 재현할 수 있도록 간단하게 작성해주세요. 조치자와 Priority는 조치 담당자가 지정합니다.'),
+    pageHead(draft ? '임시저장 이어 작성 · 결함' : '결함 등록', '재현 가능한 정보만 입력하세요. 조치자와 우선순위는 담당자가 지정합니다.'),
     h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form))
   );
   setTimeout(() => location.focus(), 0);
@@ -317,11 +381,12 @@ function renderSimpleForm(main, navigate, type, draft) {
     body.value = (isImp ? draft.request : draft.question) || '';
     if (reason) reason.value = draft.reason || '';
   }
+  const dz = fileInput(files);
   const wraps = {
     target: field({ label: isImp ? '개선 대상' : '문의 대상', required: true, input: target }),
     body: field({ label: isImp ? '개선 내용' : '문의 내용', required: true, input: body }),
     reason: reason ? field({ label: '개선 필요 사유', input: reason }) : null,
-    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), fileInput(files)),
+    attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), dz),
   };
   const label = isImp ? '개선요청 등록' : '문의 등록';
   const submitLabel = draft ? '등록 완료' : label;
@@ -378,7 +443,7 @@ function renderSimpleForm(main, navigate, type, draft) {
           ? await api.issues.createImprovement(data)
           : await api.issues.createInquiry(data);
       try {
-        await uploadFiles(res.id, files);
+        await uploadFiles(res.id, files, dz.dzErr);
       } catch (err) {
         toast(`Issue는 등록되었으나 첨부 업로드에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
       }
@@ -395,7 +460,7 @@ function renderSimpleForm(main, navigate, type, draft) {
     }
   });
   main.append(
-    pageHead(draft ? `임시저장 이어 작성 · ${isImp ? '개선요청' : '문의'}` : label, isImp ? '개선하고 싶은 내용을 간단히 적어주세요.' : '확인이 필요한 내용을 적어주세요.'),
+    pageHead(draft ? `임시저장 이어 작성 · ${isImp ? '개선요청' : '문의'}` : label, isImp ? '필요한 내용만 간단히 입력하세요.' : '확인이 필요한 내용만 입력하세요.'),
     h('div', { class: 'card create-form' }, h('div', { class: 'card-body' }, form))
   );
   setTimeout(() => target.focus(), 0);

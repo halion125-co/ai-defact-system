@@ -91,11 +91,22 @@ export async function renderLogin(root, { onLogin, admin = false }) {
       wraps[k] = h('div', { class: 'field' }, h('label', {}, label, h('span', { class: 'req' }, '*')), f[k], h('div', { class: 'error-msg hidden' }));
       card.append(wraps[k]);
     }
+    const roleName = `role-${Math.random().toString(36).slice(2)}`;
+    const roleUser = h('input', { type: 'radio', name: roleName, value: 'user', checked: true });
+    const roleResponder = h('input', { type: 'radio', name: roleName, value: 'responder' });
+    const roleField = h(
+      'div',
+      { class: 'field' },
+      h('label', {}, '역할', h('span', { class: 'req' }, '*')),
+      h('label', { class: 'radio-line' }, roleUser, ' 결함 등록/확인만 합니다 (일반 사용자)'),
+      h('label', { class: 'radio-line' }, roleResponder, ' 결함 조치를 담당합니다 (조치자)')
+    );
+    card.append(roleField);
     const btn = h('button', { class: 'btn btn-primary btn-block btn-lg', onClick: submit }, '시작');
     async function submit() {
       errEl.classList.add('hidden');
       Object.values(wraps).forEach((w) => { w.classList.remove('has-error'); w.querySelector('.error-msg').classList.add('hidden'); });
-      const data = { employeeId: f.employeeId.value.trim(), name: f.name.value.trim(), team: f.team.value.trim() };
+      const data = { employeeId: f.employeeId.value.trim(), name: f.name.value.trim(), team: f.team.value.trim(), isResponder: roleResponder.checked };
       let bad = false;
       for (const k of Object.keys(fields)) {
         if (!data[k]) {

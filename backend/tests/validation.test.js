@@ -89,7 +89,7 @@ test('XSS/제어문자/공백 정규화: 저장 시 원문 유지, 제어문자 
   assert.equal(d.title.length, 80);
   assert.ok(d.title.endsWith('…'));
   assert.ok(!d.symptom.includes('\u0000'));
-  assert.ok(d.symptom.includes('\n둘째줄'));
+  assert.ok(d.symptom.includes('<br>둘째줄'), '발생 현상은 리치 텍스트로 저장되며 개행은 <br>로 변환된다');
   assert.equal(d.reproductionSteps[0].text, 'ab');
   // 단일행 필드의 개행은 공백으로
   const r2 = await rep.post('/api/issues/defects', { ...DEFECT_BODY, location: '줄1\n줄2' });
@@ -98,6 +98,42 @@ test('XSS/제어문자/공백 정규화: 저장 시 원문 유지, 제어문자 
   const raw = await rep.get(`/api/issues/${r.body.id}`);
   assert.match(raw.headers['content-type'], /application\/json/);
   assert.equal(raw.headers['x-content-type-options'], 'nosniff');
+});
+
+test('발생 현상(symptom) 리치 텍스트: 허용 태그(b/br/img 첨부URL)만 남기고 스크립트/이벤트 핸들러/외부 img는 제거', async (t) => {
+  const { srv, rep } = await setup();
+  t.after(() => srv.close());
+
+  // 1) 허용 태그(굵게+줄바꿈)는 그대로 통과
+  const okBody = { ...DEFECT_BODY, symptom: '<b>중요</b><br>내용입니다' };
+  const okRes = await rep.post('/api/issues/defects', okBody);
+  assert.equal(okRes.status, 201);
+  const ok = (await rep.get(`/api/issues/${okRes.body.id}`)).body.issue;
+  assert.equal(ok.symptom, '<b>중요</b><br>내용입니다');
+
+  // 2) <script>, 이벤트 핸들러, 허용되지 않은 태그는 제거되고 스크립트가 실행 가능한 형태로 남지 않는다
+  const xssCases = [
+    { in: '<script>alert(1)</script>본문 설명입니다', mustNotContain: ['<script'] },
+    { in: '<img src="javascript:alert(1)">본문 설명입니다', mustNotContain: ['javascript:'] },
+    { in: '<img src="https://evil.example.com/x.png">본문 설명입니다', mustNotContain: ['evil.example.com'] },
+    { in: '<b onclick="alert(1)">클릭</b>본문 설명입니다', mustNotContain: ['onclick', 'alert('] },
+    { in: '<svg onload=alert(1)>본문 설명입니다', mustNotContain: ['onload', '<svg'] },
+    { in: '<a href="javascript:alert(1)">링크</a>본문 설명입니다', mustNotContain: ['<a ', 'javascript:'] },
+  ];
+  for (const { in: input, mustNotContain } of xssCases) {
+    const res = await rep.post('/api/issues/defects', { ...DEFECT_BODY, symptom: input });
+    assert.equal(res.status, 201, `생성 실패: ${input}`);
+    const issue = (await rep.get(`/api/issues/${res.body.id}`)).body.issue;
+    for (const forbidden of mustNotContain) {
+      assert.ok(!issue.symptom.includes(forbidden), `symptom에 위험 요소가 남아있음: ${forbidden} (원본: ${input}, 저장값: ${issue.symptom})`);
+    }
+  }
+
+  // 3) 이 서비스의 첨부 다운로드 경로 형태의 img src만 허용
+  const validImgBody = { ...DEFECT_BODY, symptom: '<img src="/api/issues/DEF-0001/attachments/ATT-001">본문 설명입니다' };
+  const validImgRes = await rep.post('/api/issues/defects', validImgBody);
+  const validImg = (await rep.get(`/api/issues/${validImgRes.body.id}`)).body.issue;
+  assert.ok(validImg.symptom.includes('<img src="/api/issues/DEF-0001/attachments/ATT-001"'), '허용된 첨부 경로의 img는 유지됨');
 });
 
 test('expectedRevision 검증: 누락/문자열/음수/소수/미래값', async (t) => {
