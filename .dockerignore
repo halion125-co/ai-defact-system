@@ -5,6 +5,7 @@ backup
 logs
 .git
 readme
-docs
+docs/drafts
+docs/verification/*.js
 backend/tests
 *.log
