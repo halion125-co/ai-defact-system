@@ -16,6 +16,7 @@ COPY backend ./backend
 COPY frontend ./frontend
 COPY scripts ./scripts
 COPY config ./config
+COPY docs ./docs
 
 # data/uploads/backup/logs는 볼륨으로 마운트되어 컨테이너 재생성 후에도 유지된다.
 RUN mkdir -p data uploads backup logs
