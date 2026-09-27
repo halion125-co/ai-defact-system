@@ -167,7 +167,11 @@ export async function renderLogin(root, { onLogin, admin = false }) {
         'div',
         { class: 'login-foot' },
         h('div', { class: 'brand-mark' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', { class: 'sep' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')),
-        h('span', {}, `© ${year} KT. All rights reserved.`, h('a', { href: '#/admin-login', class: 'admin-entry', 'aria-label': '관리자 로그인' }, ' · Admin')
+        h(
+          'div',
+          { class: 'login-foot-right' },
+          h('span', { class: 'copyright' }, `© ${year} 주식회사 케이티. All rights reserved.`),
+          h('a', { href: '#/admin-login', class: 'admin-entry', 'aria-label': '관리자 로그인' }, 'Admin')
         )
       )
     )
@@ -233,7 +237,7 @@ async function renderAdminLogin(root, { onLogin }) {
         'div',
         { class: 'login-foot' },
         h('div', { class: 'brand-mark' }, h('img', { src: '/assets/kt-logo.png', alt: 'KT' }), h('span', { class: 'sep' }), h('span', {}, '폐쇄망 전용 · 외부 통신 없음')),
-        h('span', {}, `© ${year} KT. All rights reserved.`)
+        h('span', { class: 'copyright' }, `© ${year} 주식회사 케이티. All rights reserved.`)
       )
     )
   );
