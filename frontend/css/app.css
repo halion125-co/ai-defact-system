@@ -127,13 +127,10 @@ button { cursor: pointer; }
 .login-card .user-pick { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); margin-bottom: 14px; }
 .login-card .user-pick .avatar { background: linear-gradient(135deg, var(--cyan), var(--blue)); color: #fff; }
 .login-card .error { color: #FF9E96; }
-.login-card .role-options { display: flex; flex-direction: column; gap: 8px; }
-.login-card .role-option { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; width: 100%; padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); color: #fff; text-align: left; cursor: pointer; font-family: inherit; }
+.login-card .role-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.login-card .role-option { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; padding: 0 14px; border-radius: 10px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16); color: #fff; text-align: center; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 600; }
 .login-card .role-option:hover { background: rgba(255,255,255,0.1); }
-.login-card .role-option .role-option-title { font-size: 14px; font-weight: 600; }
-.login-card .role-option .role-option-desc { font-size: 12.5px; color: #A9BEDD; }
-.login-card .role-option.active { background: rgba(22,199,255,0.12); border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan) inset; }
-.login-card .role-option.active .role-option-desc { color: var(--cyan); }
+.login-card .role-option.active { background: rgba(22,199,255,0.12); border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan) inset; color: var(--cyan); }
 .login-foot { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #8FA3C4; font-size: 12.5px; padding-top: 24px; }
 .login-foot .brand-mark { display: flex; align-items: center; gap: 14px; }
 .login-foot img { width: 34px; height: auto; opacity: 0.95; }

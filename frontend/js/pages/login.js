@@ -92,8 +92,8 @@ export async function renderLogin(root, { onLogin, admin = false }) {
       card.append(wraps[k]);
     }
     let isResponder = false;
-    const roleUserBtn = h('button', { type: 'button', class: 'role-option active' }, h('span', { class: 'role-option-title' }, '결함 등록/확인만 합니다'), h('span', { class: 'role-option-desc' }, '일반 사용자'));
-    const roleResponderBtn = h('button', { type: 'button', class: 'role-option' }, h('span', { class: 'role-option-title' }, '결함 조치를 담당합니다'), h('span', { class: 'role-option-desc' }, '조치자'));
+    const roleUserBtn = h('button', { type: 'button', class: 'role-option active' }, '일반 사용자');
+    const roleResponderBtn = h('button', { type: 'button', class: 'role-option' }, '결함 조치자');
     const selectRole = (responder) => {
       isResponder = responder;
       roleUserBtn.classList.toggle('active', !responder);
