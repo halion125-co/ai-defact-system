@@ -50,15 +50,17 @@ function fileInput(files) {
   return zone;
 }
 
-/** symptom 안의 pending(blob:) 이미지를 "[이미지 첨부 예정]" 자리표시자로 치환한다.
- * 결함 생성 자체는 issueId가 있어야 첨부 업로드가 가능해서, 최초 저장 시 이미지를 실제 URL로 보낼 수 없다.
+/** 리치텍스트 안의 pending(blob:) 이미지를 "[이미지 첨부 예정]" 자리표시자로 치환한다.
+ * Issue 생성 자체는 issueId가 있어야 첨부 업로드가 가능해서, 최초 저장 시 이미지를 실제 URL로 보낼 수 없다.
  * 이미지를 그냥 제거하면 "이미지만 붙여넣고 설명은 안 적은" 경우 서버의 최소 글자수 검증에 걸릴 수 있어
  * 자리표시자 텍스트로 남겨 최소 길이를 만족시키고, 업로드 완료 후 실제 이미지로 재치환한다. */
 function placeholderForPendingImages(html) {
   return html.replace(/<img\b[^>]*data-pending-id="[^"]*"[^>]*>/g, '[이미지 첨부 예정]');
 }
 
-/** pending 이미지를 순서대로 업로드하고, {idToUrl, revision(마지막 업로드 후 최신값)}을 반환한다. */
+/** 여러 리치텍스트 필드에 걸친 pending 이미지를 한 Map(pendingId -> {file})으로 모아 순서대로 업로드하고,
+ * {idToUrl, revision(마지막 업로드 후 최신값)}을 반환한다. idToUrl은 각 에디터의 resolvePendingImages에 그대로 넘기면
+ * 해당 에디터 DOM 안의 pending 이미지만 알아서 치환된다. */
 async function uploadPendingImages(issueId, pendingImages, startRevision) {
   const idToUrl = new Map();
   let revision = startRevision;
@@ -188,11 +190,15 @@ function renderDefectForm(main, navigate, draft) {
     initialHtml: draft ? toDisplayHtml(draft.symptom || '') : '',
     onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
   });
-  const expected = h('textarea', { class: 'input', id: 'expectedResult', rows: 3, placeholder: '예) 조회조건에 해당하는 고객 목록이 표시되어야 합니다.' });
+  const expected = createRichTextEditor({
+    id: 'expectedResult',
+    placeholder: '예) 조회조건에 해당하는 고객 목록이 표시되어야 합니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+    initialHtml: draft ? toDisplayHtml(draft.expectedResult || '') : '',
+    onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+  });
   if (draft) {
     location.value = draft.location || '';
     if (draft.environment) env.value = draft.environment.id;
-    expected.value = draft.expectedResult || '';
   }
 
   // 재현 절차
@@ -252,11 +258,11 @@ function renderDefectForm(main, navigate, draft) {
 
   const dz = fileInput(files);
   const wraps = {
+    symptom: field({ label: '발생 현상', required: true, input: symptom, help: '어떤 문제가 발생했는지 적어주세요. 화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.' }),
     location: field({ label: '발생 위치', required: true, input: location, help: '화면/메뉴/기능 위치' }),
     environmentId: field({ label: '발생 환경', required: true, input: env }),
-    symptom: field({ label: '발생 현상', required: true, input: symptom, help: '어떤 문제가 발생했는지 적어주세요. 화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.' }),
     reproductionSteps: h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수'), h('div', { class: 'error-msg hidden' })),
-    expectedResult: field({ label: '기대 결과', required: true, input: expected, help: '정상이라면 어떻게 동작해야 하는지 적어주세요.' }),
+    expectedResult: field({ label: '기대 결과', required: true, input: expected, help: '정상이라면 어떻게 동작해야 하는지 적어주세요. 화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.' }),
     attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), dz),
   };
   const submitLabel = draft ? '등록 완료' : '결함 등록';
@@ -279,7 +285,7 @@ function renderDefectForm(main, navigate, draft) {
     environmentId: env.value,
     symptom: symptom.rte.getValue(),
     reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
-    expectedResult: expected.value.trim(),
+    expectedResult: expected.rte.getValue(),
   });
 
   draftBtn.addEventListener('click', async () => {
@@ -308,29 +314,30 @@ function renderDefectForm(main, navigate, draft) {
     clearErrors(form);
     errTop.classList.add('hidden');
     const symptomHtml = symptom.rte.getValue();
+    const expectedHtml = expected.rte.getValue();
     const data = {
       location: location.value.trim(),
       environmentId: env.value,
       symptom: symptomHtml,
       reproductionSteps: steps.map((s) => s.value.trim()).filter(Boolean),
-      expectedResult: expected.value.trim(),
+      expectedResult: expectedHtml,
     };
     let bad = false;
     if (!data.location) { showError(wraps.location, '발생 위치를 입력해주세요.'); bad = true; }
     if (!data.environmentId) { showError(wraps.environmentId, '발생 환경을 선택해주세요.'); bad = true; }
     if (symptom.rte.isEmpty()) { showError(wraps.symptom, '발생 현상을 입력해주세요.'); bad = true; }
     if (data.reproductionSteps.length === 0) { showError(wraps.reproductionSteps, '재현 절차를 1단계 이상 입력해주세요.'); bad = true; }
-    if (data.expectedResult.length < 5) { showError(wraps.expectedResult, '기대 결과를 5자 이상 입력해주세요.'); bad = true; }
+    if (expected.rte.isEmpty()) { showError(wraps.expectedResult, '기대 결과를 입력해주세요.'); bad = true; }
     if (bad) {
-      form.querySelector('.has-error input, .has-error textarea, .has-error select')?.focus();
+      form.querySelector('.has-error input, .has-error textarea, .has-error select, .rte-editor')?.focus();
       return;
     }
     setBusy(submitBtn, true, submitLabel);
     try {
-      // symptom에 붙여넣은 이미지는 issueId가 생기기 전까지 blob: 상태라 그대로 저장할 수 없다.
-      // 먼저 자리표시자 텍스트로 생성/제출한 뒤, 첨부 업로드 → 에디터의 실제 이미지로 치환 → symptom을 재저장하는 순서로 처리한다.
-      const hasPendingImages = symptom.rte.hasPendingImages();
-      const dataForCreate = hasPendingImages ? { ...data, symptom: placeholderForPendingImages(symptomHtml) } : data;
+      // symptom/expectedResult에 붙여넣은 이미지는 issueId가 생기기 전까지 blob: 상태라 그대로 저장할 수 없다.
+      // 먼저 자리표시자 텍스트로 생성/제출한 뒤, 첨부 업로드 → 각 에디터의 실제 이미지로 치환 → 재저장하는 순서로 처리한다.
+      const hasPendingImages = symptom.rte.hasPendingImages() || expected.rte.hasPendingImages();
+      const dataForCreate = hasPendingImages ? { ...data, symptom: placeholderForPendingImages(symptomHtml), expectedResult: placeholderForPendingImages(expectedHtml) } : data;
       const res = draftId
         ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: dataForCreate })
         : await api.issues.createDefect(dataForCreate);
@@ -345,7 +352,8 @@ function renderDefectForm(main, navigate, draft) {
         try {
           const { idToUrl, revision } = await uploadPendingImages(res.id, pendingImages, latestRevision);
           symptom.rte.resolvePendingImages(idToUrl);
-          await api.issues.update(res.id, revision, { symptom: symptom.rte.getValue() });
+          expected.rte.resolvePendingImages(idToUrl);
+          await api.issues.update(res.id, revision, { symptom: symptom.rte.getValue(), expectedResult: expected.rte.getValue() });
         } catch (err) {
           toast(`Issue는 등록되었으나 붙여넣은 이미지 반영에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
         }
@@ -372,19 +380,25 @@ function renderDefectForm(main, navigate, draft) {
 
 function renderSimpleForm(main, navigate, type, draft) {
   const files = [];
+  const pendingImages = new Map(); // pendingId -> { file }. body에 붙여넣은 이미지는 제출 시 일괄 업로드 후 URL로 치환한다.
   const isImp = type === 'IMPROVEMENT';
   const target = h('input', { class: 'input', id: 'target', placeholder: '예) 고객정보 조회 화면', maxlength: 200 });
-  const body = h('textarea', { class: 'input', id: 'body', rows: 5, placeholder: isImp ? '예) 상태별 필터를 상단에서 바로 선택할 수 있도록 개선' : '예) 탈퇴 고객도 조회 대상에 포함되는지 확인이 필요합니다.' });
+  const bodyRaw = (isImp ? draft?.request : draft?.question) || '';
+  const body = createRichTextEditor({
+    id: 'body',
+    placeholder: isImp ? '예) 상태별 필터를 상단에서 바로 선택할 수 있도록 개선. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.' : '예) 탈퇴 고객도 조회 대상에 포함되는지 확인이 필요합니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+    initialHtml: draft ? toDisplayHtml(bodyRaw) : '',
+    onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+  });
   const reason = isImp ? h('textarea', { class: 'input', id: 'reason', rows: 3, placeholder: '예) 결함이 많아지면 원하는 고객을 찾기 어려움' }) : null;
   if (draft) {
     target.value = draft.target || '';
-    body.value = (isImp ? draft.request : draft.question) || '';
     if (reason) reason.value = draft.reason || '';
   }
   const dz = fileInput(files);
   const wraps = {
     target: field({ label: isImp ? '개선 대상' : '문의 대상', required: true, input: target }),
-    body: field({ label: isImp ? '개선 내용' : '문의 내용', required: true, input: body }),
+    body: field({ label: isImp ? '개선 내용' : '문의 내용', required: true, input: body, help: '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.' }),
     reason: reason ? field({ label: '개선 필요 사유', input: reason }) : null,
     attachments: h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), dz),
   };
@@ -403,8 +417,11 @@ function renderSimpleForm(main, navigate, type, draft) {
     h('div', { class: 'form-actions' }, h('a', { class: 'btn btn-secondary btn-lg', href: '#/new' }, '취소'), draftBtn, submitBtn)
   );
 
+  // 임시저장은 서버에 blob: 이미지를 저장할 수 없으므로(sanitizer가 거부) pending 이미지를 뺀 텍스트만 보낸다.
   const collect = () =>
-    isImp ? { target: target.value.trim(), request: body.value.trim(), reason: reason.value.trim() } : { target: target.value.trim(), question: body.value.trim() };
+    isImp
+      ? { target: target.value.trim(), request: body.rte.getValue(), reason: reason.value.trim() }
+      : { target: target.value.trim(), question: body.rte.getValue() };
 
   draftBtn.addEventListener('click', async () => {
     setBusy(draftBtn, true, '임시저장');
@@ -430,22 +447,42 @@ function renderSimpleForm(main, navigate, type, draft) {
     e.preventDefault();
     clearErrors(form);
     errTop.classList.add('hidden');
+    const bodyHtml = body.rte.getValue();
     const data = collect();
     let bad = false;
     if (!data.target) { showError(wraps.target, `${isImp ? '개선' : '문의'} 대상을 입력해주세요.`); bad = true; }
-    if ((isImp ? data.request : data.question).length < 5) { showError(wraps.body, '내용을 5자 이상 입력해주세요.'); bad = true; }
-    if (bad) return;
+    if (body.rte.isEmpty()) { showError(wraps.body, '내용을 입력해주세요.'); bad = true; }
+    if (bad) {
+      form.querySelector('.has-error input, .has-error textarea, .rte-editor')?.focus();
+      return;
+    }
     setBusy(submitBtn, true, submitLabel);
     try {
+      // body에 붙여넣은 이미지는 issueId가 생기기 전까지 blob: 상태라 그대로 저장할 수 없다.
+      // 먼저 자리표시자 텍스트로 생성/제출한 뒤, 첨부 업로드 → 에디터의 실제 이미지로 치환 → 재저장하는 순서로 처리한다.
+      const hasPendingImages = body.rte.hasPendingImages();
+      const bodyField = isImp ? 'request' : 'question';
+      const dataForCreate = hasPendingImages ? { ...data, [bodyField]: placeholderForPendingImages(bodyHtml) } : data;
       const res = draftId
-        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: data })
+        ? await api.issues.action(draftId, 'submit', { expectedRevision: draftRevision, changes: dataForCreate })
         : isImp
-          ? await api.issues.createImprovement(data)
-          : await api.issues.createInquiry(data);
+          ? await api.issues.createImprovement(dataForCreate)
+          : await api.issues.createInquiry(dataForCreate);
+      let latestRevision = res.revision;
       try {
-        await uploadFiles(res.id, files, dz.dzErr);
+        const up = await uploadFiles(res.id, files, dz.dzErr);
+        if (up) latestRevision = up;
       } catch (err) {
         toast(`Issue는 등록되었으나 첨부 업로드에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
+      }
+      if (hasPendingImages) {
+        try {
+          const { idToUrl, revision } = await uploadPendingImages(res.id, pendingImages, latestRevision);
+          body.rte.resolvePendingImages(idToUrl);
+          await api.issues.update(res.id, revision, { [bodyField]: body.rte.getValue() });
+        } catch (err) {
+          toast(`Issue는 등록되었으나 붙여넣은 이미지 반영에 실패했습니다: ${errorMessage(err)}`, 'error', { timeout: 7000 });
+        }
       }
       toast(`${res.id} ${josa(isImp ? '개선요청' : '문의', '이/가')} 등록되었습니다.`, 'success');
       successPanel(main, { ...res, type }, () => { clear(main); renderSimpleForm(main, navigate, type); });

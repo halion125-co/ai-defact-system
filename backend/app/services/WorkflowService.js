@@ -3,6 +3,7 @@
 const { errors } = require('../utils/errors');
 const V = require('../validators/validators');
 const P = require('../permissions/permissions');
+const { richTextToPlainText } = require('../utils/text');
 const { STATUS, EVENT, TRANSITIONS, DEPLOYMENT_STATUS, PRIORITY } = require('../models/constants');
 
 /**
@@ -135,7 +136,7 @@ class WorkflowService {
       ctx.event(EVENT.RESOLVED, {
         before: { status: from },
         after: { status: to },
-        comment: resolution.description,
+        comment: richTextToPlainText(resolution.description),
         data: { changeReference: iss.resolution.changeReference, targetVersion: iss.resolution.targetVersion },
       });
     });

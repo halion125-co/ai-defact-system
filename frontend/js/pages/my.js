@@ -3,8 +3,9 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, formModal, toast, errorMessage } from '../ui.js';
+import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, formModal, openModal, toast, errorMessage } from '../ui.js';
 import { openIssuePreview } from '../issuePreview.js';
+import { createRichTextEditor } from '../richText.js';
 
 const TABS = [
   { key: 'reported', label: '내가 등록', desc: '내가 Reporter인 Issue', empty: '등록한 Issue가 없습니다.' },
@@ -24,17 +25,56 @@ async function doStart(it, reload) {
   }
 }
 function doResolve(it, reload) {
-  formModal({
-    title: '조치 완료',
-    description: `${it.id} · 처리 결과를 남기면 확인대기 상태가 되며 등록자가 재검증합니다.`,
-    fields: [{ name: 'description', label: '처리 결과', type: 'textarea', required: true, placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다.', rows: 4 }],
-    submitLabel: '조치 완료',
-    onSubmit: async (v) => {
-      await api.issues.action(it.id, 'resolve', { expectedRevision: it.revision, resolution: v });
-      toast(`${it.id} 조치 완료 처리되었습니다.`, 'success');
-      reload();
-    },
+  const pendingImages = new Map(); // pendingId -> { file }. issue가 이미 있으므로 저장 시 바로 업로드 가능.
+  const description = createRichTextEditor({
+    placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+    onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
   });
+  const errBox = h('div', { class: 'form-error hidden' });
+  const body = h(
+    'div',
+    {},
+    h('p', { class: 'muted', style: { marginTop: 0 } }, `${it.id} · 처리 결과를 남기면 확인대기 상태가 되며 등록자가 재검증합니다.`),
+    errBox,
+    h('div', { class: 'field' }, h('label', {}, '처리 결과', h('span', { class: 'req' }, '*')), description, h('div', { class: 'help' }, '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.'))
+  );
+  const submit = async (close) => {
+    errBox.classList.add('hidden');
+    if (description.rte.isEmpty()) {
+      errBox.textContent = '처리 결과를 입력해주세요.';
+      errBox.classList.remove('hidden');
+      return;
+    }
+    try {
+      let curRev = it.revision;
+      if (pendingImages.size) {
+        const idToUrl = new Map();
+        for (const [pendingId, { file }] of pendingImages) {
+          const fd = new FormData();
+          fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+          const up = await api.issues.upload(it.id, fd);
+          curRev = up.revision;
+          const att = up.attachments && up.attachments[0];
+          if (att) idToUrl.set(pendingId, `/api/issues/${it.id}/attachments/${att.attachmentId}`);
+        }
+        description.rte.resolvePendingImages(idToUrl);
+      }
+      await api.issues.action(it.id, 'resolve', { expectedRevision: curRev, resolution: { description: description.rte.getValue() } });
+      toast(`${it.id} 조치 완료 처리되었습니다.`, 'success');
+      close();
+      reload();
+    } catch (err) {
+      if (err.isConflict) {
+        toast('다른 사용자가 먼저 변경했습니다. 목록을 새로고침합니다.', 'error');
+        close();
+        reload();
+      } else {
+        errBox.textContent = errorMessage(err);
+        errBox.classList.remove('hidden');
+      }
+    }
+  };
+  openModal({ title: '조치 완료', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '조치 완료', variant: 'btn-primary', onClick: submit }] });
 }
 function doCloseVerified(it, reload) {
   formModal({

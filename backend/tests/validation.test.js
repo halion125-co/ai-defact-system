@@ -136,6 +136,47 @@ test('발생 현상(symptom) 리치 텍스트: 허용 태그(b/br/img 첨부URL)
   assert.ok(validImg.symptom.includes('<img src="/api/issues/DEF-0001/attachments/ATT-001"'), '허용된 첨부 경로의 img는 유지됨');
 });
 
+test('기대 결과/개선 내용/문의 내용/조치 완료 처리결과도 발생 현상과 동일한 리치 텍스트 규칙(허용 태그만 통과, 스크립트 제거)을 따른다', async (t) => {
+  const { srv, rep, dev } = await setup();
+  t.after(() => srv.close());
+
+  // 기대 결과: 허용 태그는 통과, 위험 태그는 제거
+  const defRes = await rep.post('/api/issues/defects', { ...DEFECT_BODY, expectedResult: '<b>정상</b> 동작<script>alert(1)</script>이어야 합니다' });
+  assert.equal(defRes.status, 201);
+  const def = (await rep.get(`/api/issues/${defRes.body.id}`)).body.issue;
+  assert.ok(!def.expectedResult.includes('<script'), `script 태그가 남아있음: ${def.expectedResult}`);
+  assert.ok(def.expectedResult.startsWith('<b>정상</b> 동작'));
+
+  // 개선 내용
+  const impRes = await rep.post('/api/issues/improvements', { target: 'X', request: '<b>개선</b> 필요<img src="javascript:alert(1)">합니다' });
+  assert.equal(impRes.status, 201);
+  const imp = (await rep.get(`/api/issues/${impRes.body.id}`)).body.issue;
+  assert.equal(imp.request, '<b>개선</b> 필요합니다');
+  assert.ok(!imp.request.includes('javascript:'));
+
+  // 문의 내용
+  const inqRes = await rep.post('/api/issues/inquiries', { target: 'Y', question: '<b>확인</b> 요청<svg onload=alert(1)>합니다' });
+  assert.equal(inqRes.status, 201);
+  const inq = (await rep.get(`/api/issues/${inqRes.body.id}`)).body.issue;
+  assert.equal(inq.question, '<b>확인</b> 요청합니다');
+  assert.ok(!inq.question.includes('onload'));
+
+  // 조치 완료 처리 결과
+  await dev.post(`/api/issues/${defRes.body.id}/actions/claim`, { expectedRevision: 1 });
+  await dev.post(`/api/issues/${defRes.body.id}/actions/start`, { expectedRevision: 2 });
+  const resolveRes = await dev.post(`/api/issues/${defRes.body.id}/actions/resolve`, {
+    expectedRevision: 3,
+    resolution: { description: '<b>수정</b> 완료<b onclick="alert(1)">클릭</b>했습니다' },
+  });
+  assert.equal(resolveRes.status, 200);
+  const resolved = (await rep.get(`/api/issues/${defRes.body.id}`)).body.issue;
+  assert.equal(resolved.resolution.description, '<b>수정</b> 완료<b>클릭</b>했습니다');
+  assert.ok(!resolved.resolution.description.includes('onclick'));
+  // Timeline의 comment는 순수 텍스트로 남아 화면에 태그가 그대로 노출되지 않는다
+  const resolvedEvent = resolved.history.find((e) => e.eventType === 'RESOLVED');
+  assert.equal(resolvedEvent.comment, '수정 완료클릭했습니다');
+});
+
 test('expectedRevision 검증: 누락/문자열/음수/소수/미래값', async (t) => {
   const { srv, rep, dev } = await setup();
   t.after(() => srv.close());

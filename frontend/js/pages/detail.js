@@ -155,19 +155,22 @@ export async function renderDetail(main, { params, navigate }) {
     /* ---------- 결함 내용 ---------- */
     const block = (title, body) => h('div', { class: 'content-block' }, h('h4', {}, title), body);
     const contentBody = h('div', {});
+    const richBody = (raw, cls = 'body') => {
+      const el = renderIssueBodyText(raw, 'div', cls);
+      bindBodyImagePreview(el);
+      return el;
+    };
     if (issue.type === 'DEFECT') {
-      const symptomBody = renderIssueBodyText(issue.symptom);
-      bindBodyImagePreview(symptomBody);
       contentBody.append(
+        block('발생 현상', richBody(issue.symptom)),
         block('발생 위치', h('div', { class: 'body' }, issue.location)),
-        block('발생 현상', symptomBody),
         block('재현 절차', h('ol', {}, ...(issue.reproductionSteps || []).map((s) => h('li', {}, s.text)))),
-        block('기대 결과', h('div', { class: 'body' }, issue.expectedResult))
+        block('기대 결과', richBody(issue.expectedResult))
       );
     } else if (issue.type === 'IMPROVEMENT') {
-      contentBody.append(block('개선 대상', h('div', { class: 'body' }, issue.target)), block('개선 내용', h('div', { class: 'body' }, issue.request)), issue.reason ? block('개선 필요 사유', h('div', { class: 'body' }, issue.reason)) : null);
+      contentBody.append(block('개선 대상', h('div', { class: 'body' }, issue.target)), block('개선 내용', richBody(issue.request)), issue.reason ? block('개선 필요 사유', h('div', { class: 'body' }, issue.reason)) : null);
     } else {
-      contentBody.append(block('문의 대상', h('div', { class: 'body' }, issue.target)), block('문의 내용', h('div', { class: 'body' }, issue.question)));
+      contentBody.append(block('문의 대상', h('div', { class: 'body' }, issue.target)), block('문의 내용', richBody(issue.question)));
     }
     contentBody.append(block('첨부파일 / 증적', attachmentZone(issue, p)));
     const content = card(`${{ DEFECT: '결함', IMPROVEMENT: '개선요청', INQUIRY: '문의' }[issue.type]} 내용`, contentBody);
@@ -195,11 +198,12 @@ export async function renderDetail(main, { params, navigate }) {
     const d = issue.deployment || {};
     const hasTrace = !!((r && (r.description || r.targetVersion)) || (op.enableDeployment && d.status === 'DEPLOYED') || (issue.close && issue.close.type));
     const traceRow = (k, v, mono) => h('div', {}, h('div', { class: 'k' }, k), h('div', { class: `v${v ? '' : ' empty'}${mono && v ? ' mono' : ''}` }, v || '-'));
+    const resolutionBody = r && r.description ? richBody(r.description, 'v pre') : h('div', { class: 'v pre empty' }, '-');
     const traceBody = hasTrace
       ? h(
           'div',
           { class: 'trace' },
-          h('div', { style: { gridColumn: '1 / -1' } }, h('div', { class: 'k' }, '조치 결과'), h('div', { class: `v pre${r && r.description ? '' : ' empty'}` }, (r && r.description) || '-')),
+          h('div', { style: { gridColumn: '1 / -1' } }, h('div', { class: 'k' }, '조치 결과'), resolutionBody),
           op.enableChangeReference ? traceRow('Change Reference', r && r.changeReference, true) : null,
           traceRow('반영 예정 버전', r && r.targetVersion),
           traceRow('최초 조치완료', r && r.firstResolvedAt ? fmtDateTime(r.firstResolvedAt) : null),
@@ -238,17 +242,58 @@ export async function renderDetail(main, { params, navigate }) {
       }
     }
     function openResolve() {
-      formModal({
-        title: '조치 완료',
-        description: '처리 결과를 남기면 확인대기 상태가 되며 등록자가 재검증합니다.',
-        fields: [
-          { name: 'description', label: '처리 결과', type: 'textarea', required: true, placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다.', rows: 4 },
-          ...(op.enableChangeReference ? [{ name: 'changeReference', label: 'Change Reference', placeholder: 'Commit / Revision / Change ID', help: `Commit message 권장: [${issue.id}] 수정 내용` }] : []),
-          { name: 'targetVersion', label: '반영 예정 버전', placeholder: '예) Release 1.2.3' },
-        ],
-        submitLabel: '조치 완료',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'resolve', { expectedRevision: rev, resolution: v }), '조치 완료 처리되었습니다. (조치중 → 확인대기)'),
+      const pendingImages = new Map(); // pendingId -> { file }. issue가 이미 있으므로 저장 시 바로 업로드 가능.
+      const description = createRichTextEditor({
+        placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+        onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
       });
+      const changeReference = op.enableChangeReference ? h('input', { class: 'input', placeholder: 'Commit / Revision / Change ID' }) : null;
+      const targetVersion = h('input', { class: 'input', placeholder: '예) Release 1.2.3' });
+      const field = (label, input, required, help) => h('div', { class: 'field' }, h('label', {}, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null);
+      const errBox = h('div', { class: 'form-error hidden' });
+      const body = h(
+        'div',
+        {},
+        errBox,
+        field('처리 결과', description, true, '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.'),
+        changeReference ? field('Change Reference', changeReference, false, `Commit message 권장: [${issue.id}] 수정 내용`) : null,
+        field('반영 예정 버전', targetVersion, false)
+      );
+      const submit = async (close) => {
+        errBox.classList.add('hidden');
+        if (description.rte.isEmpty()) {
+          errBox.textContent = '처리 결과를 입력해주세요.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+        try {
+          await run(async (rev) => {
+            let curRev = rev;
+            if (pendingImages.size) {
+              const idToUrl = new Map();
+              for (const [pendingId, { file }] of pendingImages) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+                const up = await api.issues.upload(issue.id, fd);
+                curRev = up.revision;
+                const att = up.attachments && up.attachments[0];
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`);
+              }
+              description.rte.resolvePendingImages(idToUrl);
+            }
+            const resolution = { description: description.rte.getValue(), targetVersion: targetVersion.value.trim() };
+            if (changeReference) resolution.changeReference = changeReference.value.trim();
+            return api.issues.action(issue.id, 'resolve', { expectedRevision: curRev, resolution });
+          }, '조치 완료 처리되었습니다. (조치중 → 확인대기)');
+          close();
+        } catch (err) {
+          if (!err.isConflict) {
+            errBox.textContent = errorMessage(err);
+            errBox.classList.remove('hidden');
+          }
+        }
+      };
+      openModal({ title: '조치 완료', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '조치 완료', variant: 'btn-primary', onClick: submit }] });
     }
     function openDeploy() {
       formModal({
@@ -390,8 +435,10 @@ export async function renderDetail(main, { params, navigate }) {
         initialHtml: toDisplayHtml(issue.symptom),
         onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
       });
-      const expected = h('textarea', { class: 'input', rows: 3 });
-      expected.value = issue.expectedResult;
+      const expected = createRichTextEditor({
+        initialHtml: toDisplayHtml(issue.expectedResult),
+        onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+      });
 
       const stepsEl = h('div', { class: 'steps' });
       const steps = [];
@@ -425,9 +472,9 @@ export async function renderDetail(main, { params, navigate }) {
         'div',
         {},
         errBox,
+        field('발생 현상', symptom, '어떤 문제가 발생했는지 적어주세요.'),
         field('발생 위치', location, '화면/메뉴/기능 위치'),
         field('발생 환경', env),
-        field('발생 현상', symptom, '어떤 문제가 발생했는지 적어주세요.'),
         h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수')),
         field('기대 결과', expected, '정상이라면 어떻게 동작해야 하는지 적어주세요.')
       );
@@ -439,7 +486,8 @@ export async function renderDetail(main, { params, navigate }) {
         if (env.value !== issue.environment.id) changes.environmentId = env.value;
         const symptomHtml = symptom.rte.getValue();
         if (symptomHtml !== toDisplayHtml(issue.symptom)) changes.symptom = symptomHtml;
-        if (expected.value.trim() !== issue.expectedResult) changes.expectedResult = expected.value.trim();
+        const expectedHtml = expected.rte.getValue();
+        if (expectedHtml !== toDisplayHtml(issue.expectedResult)) changes.expectedResult = expectedHtml;
         const nvSteps = steps.map((s) => s.value.trim()).filter(Boolean);
         if (JSON.stringify(nvSteps) !== JSON.stringify(existingSteps)) changes.reproductionSteps = nvSteps;
         if (!Object.keys(changes).length) {
@@ -451,15 +499,20 @@ export async function renderDetail(main, { params, navigate }) {
           await run(async (rev) => {
             let curRev = rev;
             if (pendingImages.size) {
+              const idToUrl = new Map();
               for (const [pendingId, { file }] of pendingImages) {
                 const fd = new FormData();
                 fd.append('file', file, file.name || `pasted-${pendingId}.png`);
                 const up = await api.issues.upload(issue.id, fd);
                 curRev = up.revision;
                 const att = up.attachments && up.attachments[0];
-                if (att) symptom.rte.resolvePendingImages(new Map([[pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`]]));
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`);
               }
+              symptom.rte.resolvePendingImages(idToUrl);
+              expected.rte.resolvePendingImages(idToUrl);
+              // pending 이미지가 실제 URL로 치환되었으므로, 두 필드 모두 최신 값으로 다시 반영한다.
               changes.symptom = symptom.rte.getValue();
+              changes.expectedResult = expected.rte.getValue();
             }
             return api.issues.update(issue.id, curRev, changes);
           }, '등록내용이 수정되었습니다.');

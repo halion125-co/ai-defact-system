@@ -32,9 +32,9 @@ test('여러 줄/빈 줄/탭/CRLF 입력이 저장·조회·수정에서 그대�
   const r = await rep.post('/api/issues/defects', { ...DEFECT_BODY, symptom, expectedResult: expected });
   assert.equal(r.status, 201);
   const d = (await rep.get(`/api/issues/${r.body.id}`)).body.issue;
-  // 발생 현상은 리치 텍스트(HTML)로 저장되며, 개행은 <br>로 변환되고 cleanText와 동일한 빈 줄 축약 규칙이 적용된다.
+  // 발생 현상/기대 결과 모두 리치 텍스트(HTML)로 저장되며, 개행은 <br>로 변환되고 cleanText와 동일한 빈 줄 축약 규칙이 적용된다.
   assert.equal(d.symptom, '첫 줄 현상 설명입니다.<br><br>두 번째 문단.<br>\t들여쓴 줄<br><br>세 번째 문단 (빈 줄 3개 이상 → 2개로 축약)<br>마지막 줄');
-  assert.equal(d.expectedResult, expected);
+  assert.equal(d.expectedResult, '결과는<br>정상이어야 합니다.<br><br>- 항목 1<br>- 항목 2');
   assert.equal(d.title, '첫 줄 현상 설명입니다.', '제목은 첫 줄');
   // 수정 왕복: 동일 내용 재전송 → 변경 없음(400), 한 줄 추가 → UPDATED + before/after 보존
   const same = await rep.patch(`/api/issues/${r.body.id}`, { expectedRevision: 1, changes: { symptom: d.symptom } });

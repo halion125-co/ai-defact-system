@@ -139,7 +139,7 @@ function defectCreate(body, activeEnvironments) {
     environment: { id: env.id, displayNameSnapshot: env.displayName },
     symptom: richText(body.symptom, { field: 'symptom', label: '발생 현상', min: 5, max: 2000 }),
     reproductionSteps: reproductionSteps(body.reproductionSteps),
-    expectedResult: text(body.expectedResult, { field: 'expectedResult', label: '기대 결과', min: 5, max: 2000, multiline: true }),
+    expectedResult: richText(body.expectedResult, { field: 'expectedResult', label: '기대 결과', min: 5, max: 2000 }),
   };
 }
 
@@ -147,7 +147,7 @@ function improvementCreate(body) {
   requireObject(body);
   return {
     target: text(body.target, { field: 'target', label: '개선 대상', min: 1, max: 200 }),
-    request: text(body.request, { field: 'request', label: '개선 내용', min: 5, max: 2000, multiline: true }),
+    request: richText(body.request, { field: 'request', label: '개선 내용', min: 5, max: 2000 }),
     reason: text(body.reason, { field: 'reason', label: '개선 필요 사유', required: false, max: 2000, multiline: true }),
   };
 }
@@ -156,7 +156,7 @@ function inquiryCreate(body) {
   requireObject(body);
   return {
     target: text(body.target, { field: 'target', label: '문의 대상', min: 1, max: 200 }),
-    question: text(body.question, { field: 'question', label: '문의 내용', min: 5, max: 2000, multiline: true }),
+    question: richText(body.question, { field: 'question', label: '문의 내용', min: 5, max: 2000 }),
   };
 }
 
@@ -174,20 +174,20 @@ function draftCreate(type, body, activeEnvironments) {
       environment: env ? { id: env.id, displayNameSnapshot: env.displayName } : null,
       symptom: richText(body.symptom, { field: 'symptom', label: '발생 현상', required: false, max: 2000 }),
       reproductionSteps: Array.isArray(body.reproductionSteps) ? reproductionStepsLoose(body.reproductionSteps) : [],
-      expectedResult: text(body.expectedResult, { field: 'expectedResult', label: '기대 결과', required: false, max: 2000, multiline: true }),
+      expectedResult: richText(body.expectedResult, { field: 'expectedResult', label: '기대 결과', required: false, max: 2000 }),
     };
   }
   if (type === 'IMPROVEMENT') {
     return {
       target: text(body.target, { field: 'target', label: '개선 대상', required: false, max: 200 }),
-      request: text(body.request, { field: 'request', label: '개선 내용', required: false, max: 2000, multiline: true }),
+      request: richText(body.request, { field: 'request', label: '개선 내용', required: false, max: 2000 }),
       reason: text(body.reason, { field: 'reason', label: '개선 필요 사유', required: false, max: 2000, multiline: true }),
     };
   }
   if (type === 'INQUIRY') {
     return {
       target: text(body.target, { field: 'target', label: '문의 대상', required: false, max: 200 }),
-      question: text(body.question, { field: 'question', label: '문의 내용', required: false, max: 2000, multiline: true }),
+      question: richText(body.question, { field: 'question', label: '문의 내용', required: false, max: 2000 }),
     };
   }
   throw fail('유형이 올바르지 않습니다.', 'type');
@@ -213,7 +213,7 @@ function contentChanges(type, changes, activeEnvironments) {
     if (type === 'DEFECT') {
       if (k === 'location') out.location = text(v, { field: k, label: '발생 위치', min: 1, max: 200 });
       else if (k === 'symptom') out.symptom = richText(v, { field: k, label: '발생 현상', min: 5, max: 2000 });
-      else if (k === 'expectedResult') out.expectedResult = text(v, { field: k, label: '기대 결과', min: 5, max: 2000, multiline: true });
+      else if (k === 'expectedResult') out.expectedResult = richText(v, { field: k, label: '기대 결과', min: 5, max: 2000 });
       else if (k === 'reproductionSteps') out.reproductionSteps = reproductionSteps(v);
       else if (k === 'environmentId') {
         const env = activeEnvironments.find((e) => e.id === v);
@@ -222,12 +222,12 @@ function contentChanges(type, changes, activeEnvironments) {
       } else throw fail(`수정할 수 없는 항목입니다: ${k}`, k);
     } else if (type === 'IMPROVEMENT') {
       if (k === 'target') out.target = text(v, { field: k, label: '개선 대상', min: 1, max: 200 });
-      else if (k === 'request') out.request = text(v, { field: k, label: '개선 내용', min: 5, max: 2000, multiline: true });
+      else if (k === 'request') out.request = richText(v, { field: k, label: '개선 내용', min: 5, max: 2000 });
       else if (k === 'reason') out.reason = text(v, { field: k, label: '개선 필요 사유', required: false, max: 2000, multiline: true });
       else throw fail(`수정할 수 없는 항목입니다: ${k}`, k);
     } else if (type === 'INQUIRY') {
       if (k === 'target') out.target = text(v, { field: k, label: '문의 대상', min: 1, max: 200 });
-      else if (k === 'question') out.question = text(v, { field: k, label: '문의 내용', min: 5, max: 2000, multiline: true });
+      else if (k === 'question') out.question = richText(v, { field: k, label: '문의 내용', min: 5, max: 2000 });
       else throw fail(`수정할 수 없는 항목입니다: ${k}`, k);
     }
   }
@@ -242,7 +242,7 @@ function reason(body, label = '사유', required = true) {
 function resolution(body, operation) {
   const r = body.resolution && typeof body.resolution === 'object' ? body.resolution : body;
   return {
-    description: text(r.description, { field: 'description', label: '처리 결과', min: 2, max: 2000, multiline: true }),
+    description: richText(r.description, { field: 'description', label: '처리 결과', min: 2, max: 2000 }),
     changeReference: operation.enableChangeReference
       ? text(r.changeReference, { field: 'changeReference', label: 'Change Reference', required: false, max: 200 })
       : '',

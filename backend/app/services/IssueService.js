@@ -117,16 +117,16 @@ class IssueService {
 
   async createImprovement(user, body) {
     const data = V.improvementCreate(body);
-    return this._createBase('IMPROVEMENT', user, data, makeTitle(data.request));
+    return this._createBase('IMPROVEMENT', user, data, makeTitle(richTextToPlainText(data.request)));
   }
 
   async createInquiry(user, body) {
     const data = V.inquiryCreate(body);
-    return this._createBase('INQUIRY', user, data, makeTitle(data.question));
+    return this._createBase('INQUIRY', user, data, makeTitle(richTextToPlainText(data.question)));
   }
 
   _draftTitle(type, data) {
-    const src = type === 'DEFECT' ? richTextToPlainText(data.symptom) : type === 'IMPROVEMENT' ? data.request : data.question;
+    const src = type === 'DEFECT' ? richTextToPlainText(data.symptom) : type === 'IMPROVEMENT' ? richTextToPlainText(data.request) : richTextToPlainText(data.question);
     return src ? makeTitle(src) : '(제목 없음, 임시저장)';
   }
 
@@ -247,8 +247,8 @@ class IssueService {
       }
       if (Object.keys(after).length === 0) throw errors.validation('변경된 내용이 없습니다.');
       if (after.symptom) iss.title = makeTitle(richTextToPlainText(after.symptom));
-      if (after.request) iss.title = makeTitle(after.request);
-      if (after.question) iss.title = makeTitle(after.question);
+      if (after.request) iss.title = makeTitle(richTextToPlainText(after.request));
+      if (after.question) iss.title = makeTitle(richTextToPlainText(after.question));
       ctx.event(EVENT.UPDATED, { before, after, data: { fields: Object.keys(after), byAdmin: !!user.isQualityAdmin && !P.isReporter(user, iss) } });
     });
     return { id: issue.id, revision: issue.revision };
