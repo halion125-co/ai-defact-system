@@ -295,8 +295,10 @@ test('일반 로그인(/api/session/start)으로는 bootstrap 사번이라도 Qu
   assert.equal(started.body.user.isQualityAdmin, false, '일반 로그인 경로는 더 이상 자동 승격하지 않는다');
 });
 
-test('관리자 전용 로그인(/api/session/admin-start): 올바른 비밀번호로만 Quality Admin 승격/세션 발급, 실패 시 잠금', async (t) => {
-  const c = makeContainer({ adminPassword: 'sup3r-secret' });
+const FIXED_ADMIN_PASSWORD = 'fltmzmvnawlfxla';
+
+test('관리자 전용 로그인(/api/session/admin-start): 사번 admin + 고정 비밀번호로만 Quality Admin 승격/세션 발급, 실패 시 잠금', async (t) => {
+  const c = makeContainer();
   const srv = await startServer(c);
   t.after(() => srv.close());
   const cli = client(srv.base);
@@ -311,29 +313,30 @@ test('관리자 전용 로그인(/api/session/admin-start): 올바른 비밀번�
   assert.equal(c.repos.userRepo.findByEmployeeId('admin'), null);
 
   // 올바른 비밀번호 → 신규 계정이 Quality Admin으로 생성되고 세션도 발급됨
-  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: 'sup3r-secret' });
+  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: FIXED_ADMIN_PASSWORD });
   assert.equal(r.status, 200);
   assert.equal(r.body.user.isQualityAdmin, true);
   const cur = await cli.get('/api/session/current');
   assert.equal(cur.body.user.userId, r.body.user.userId);
 
   // 반복 실패 시 일시 잠금(무차별 대입 방지)
-  const c2 = makeContainer({ adminPassword: 'sup3r-secret' });
+  const c2 = makeContainer();
   const srv2 = await startServer(c2);
   t.after(() => srv2.close());
   const cli2 = client(srv2.base);
   for (let i = 0; i < 5; i += 1) {
     await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: 'wrong' });
   }
-  const blocked = await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: 'sup3r-secret' });
+  const blocked = await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: FIXED_ADMIN_PASSWORD });
   assert.equal(blocked.status, 403, '연속 실패 이후에는 올바른 비밀번호도 잠시 차단된다');
 });
 
-test('관리자 비밀번호가 설정되지 않은 배포는 admin-start 자체가 거부된다', async (t) => {
-  const c = makeContainer({ adminPassword: '' });
+test('관리자 전용 로그인은 사번 admin에만 허용되고, 다른 사번은 비밀번호가 맞아도 거부된다', async (t) => {
+  const c = makeContainer();
   const srv = await startServer(c);
   t.after(() => srv.close());
   const cli = client(srv.base);
-  const r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: '' });
+  const r = await cli.post('/api/session/admin-start', { employeeId: '10001', password: FIXED_ADMIN_PASSWORD });
   assert.equal(r.status, 403);
+  assert.equal(c.repos.userRepo.findByEmployeeId('10001'), null, '거부된 시도로 계정이 생성되지 않는다');
 });

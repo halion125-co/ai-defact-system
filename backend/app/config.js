@@ -19,7 +19,6 @@ const DEFAULTS = {
   frontendDir: './frontend',
   sessionTtlHours: 12,
   bootstrapAdminEmployeeIds: ['admin'],
-  adminPassword: '',
   timezone: 'Asia/Seoul',
   maxJsonBodyBytes: 1024 * 1024,
   backupSchedule: { enabled: true, hour: 2, minute: 0 },
@@ -45,7 +44,6 @@ function loadServerConfig(overrides = {}) {
   if (process.env.DMS_BOOTSTRAP_ADMIN) {
     cfg.bootstrapAdminEmployeeIds = process.env.DMS_BOOTSTRAP_ADMIN.split(',').map((s) => s.trim()).filter(Boolean);
   }
-  if (process.env.DMS_ADMIN_PASSWORD !== undefined) cfg.adminPassword = process.env.DMS_ADMIN_PASSWORD;
 
   const abs = (p) => (path.isAbsolute(p) ? p : path.resolve(ROOT, p));
   cfg.root = ROOT;

@@ -29,7 +29,7 @@ function makeContainer(opts = {}) {
   return c;
 }
 
-/** 테스트 전용: 실제 서비스는 #/admin-login(사번+관리자 비밀번호)으로만 Quality Admin 승격이 된다. */
+/** 테스트 전용: 실제 서비스는 #/admin-login(사번 admin+고정 비밀번호) 또는 [설정 > 사용자]의 Admin 지정으로만 Quality Admin 승격이 된다. */
 async function promoteToAdmin(c, employeeId) {
   const u = c.repos.userRepo.findByEmployeeId(employeeId);
   if (!u) throw new Error(`promoteToAdmin: 사번 ${employeeId} 사용자 없음`);
@@ -38,7 +38,7 @@ async function promoteToAdmin(c, employeeId) {
 
 async function makeUsers(c) {
   const created = await c.userService.register({ employeeId: 'admin', name: '김성훈', team: '품질팀' });
-  // 테스트 전용: Admin 권한 승격은 실제로는 #/admin-login(사번+관리자 비밀번호)으로만 가능하다.
+  // 테스트 전용: Admin 권한 승격은 실제로는 #/admin-login(사번 admin+고정 비밀번호) 또는 [설정 > 사용자]로만 가능하다.
   const admin = c.userService.publicUser(await c.repos.userRepo.update(created.userId, { isQualityAdmin: true }));
   const reporter = await c.userService.register({ employeeId: '10001', name: '이영희', team: '업무팀' });
   const dev = await c.userService.register({ employeeId: '20001', name: '홍길동', team: '개발팀' });
