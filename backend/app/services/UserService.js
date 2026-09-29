@@ -3,6 +3,10 @@
 const crypto = require('crypto');
 const { errors } = require('../utils/errors');
 const V = require('../validators/validators');
+const P = require('../permissions/permissions');
+const { padNumber } = require('../utils/id');
+const { nowIso } = require('../utils/time');
+const { EVENT } = require('../models/constants');
 
 /**
  * 관리자 계정(사번 'admin') 전용 고정 비밀번호의 SHA-256 해시.
@@ -23,9 +27,11 @@ function safeEqual(a, b) {
 }
 
 class UserService {
-  constructor({ userRepo, bootstrapAdminEmployeeIds = [], logger }) {
+  constructor({ userRepo, bootstrapAdminEmployeeIds = [], auditRepo, sequenceRepo, logger }) {
     this.userRepo = userRepo;
     this.bootstrapAdmins = new Set(bootstrapAdminEmployeeIds.map((s) => String(s).toLowerCase()));
+    this.auditRepo = auditRepo;
+    this.sequenceRepo = sequenceRepo;
     this.logger = logger;
     this.adminLoginFailures = { count: 0, blockedUntil: 0 };
   }
@@ -145,6 +151,35 @@ class UserService {
     const updated = await this.userRepo.update(userId, changes);
     if (this.logger) this.logger.info('사용자 수정', { actor: actor.userId, userId, fields: Object.keys(changes) });
     return this.publicUser(updated);
+  }
+
+  /**
+   * 사용자 레코드를 완전히 삭제한다(복구 불가). Admin 전용, 본인 계정은 삭제 불가.
+   * 마지막 활성 Admin은 삭제할 수 없다(update()의 보호 로직과 동일한 취지 — 시스템에 Admin이
+   * 0명이 되는 상황을 막는다). 기존 Issue의 등록자/조치자 표시는 스냅샷(name/team)으로 유지되어
+   * 삭제 후에도 깨지지 않지만, 그 userId로의 재조회(담당자 지정 등)는 더 이상 불가능해진다.
+   */
+  async deleteUser(actor, userId) {
+    if (!P.canDeleteUser(actor, { userId })) throw errors.forbidden();
+    const target = this.userRepo.findById(userId);
+    if (!target) throw errors.notFound('사용자를 찾을 수 없습니다.');
+    if (target.isQualityAdmin) {
+      const otherAdmins = this.userRepo.all().filter((u) => u.isQualityAdmin && u.active !== false && u.userId !== userId);
+      if (otherAdmins.length === 0) throw errors.validation('최소 1명의 활성 Quality Admin이 필요합니다.');
+    }
+    await this.userRepo.remove(userId);
+    if (this.auditRepo && this.sequenceRepo) {
+      this.auditRepo.append({
+        eventId: `EVT-${padNumber(await this.sequenceRepo.next('EVT'), 6)}`,
+        eventType: EVENT.USER_DELETED,
+        actor: this.snapshot(actor),
+        actorId: actor.userId,
+        timestamp: nowIso(),
+        data: { userId, employeeId: target.employeeId, name: target.name },
+      });
+    }
+    if (this.logger) this.logger.info('사용자 완전 삭제', { actor: actor.userId, userId, employeeId: target.employeeId });
+    return { userId };
   }
 }
 

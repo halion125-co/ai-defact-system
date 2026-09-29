@@ -24,7 +24,7 @@
 | D-16 | Kanban 표시 한도 | - | 500건. 초과 시 안내 문구로 필터 유도. |
 | D-17 | Dashboard 기간 필터 | 02 §27 | "최근 N일"은 createdAt 기준 집합. KPI는 그 집합의 현재 상태. Burn Up/일자별 차트는 동일 집합에서 계산. |
 | D-18 | Priority Tailoring | 01 §21 Tab C | 코드(CRITICAL/MAJOR/MINOR)는 고정, displayName/description/active/order만 변경. 비활성 Priority는 신규 지정 불가, 기존 값은 유지. |
-| D-19 | 사용자 삭제 | 02 §35 | 삭제 없음, active=false. 본인 Admin 해제/비활성화 및 마지막 활성 Admin 해제 금지. |
+| D-19 | 사용자 삭제 | 02 §35, 사용자 요청(2026-09-29, D-19 갱신) | **완전 삭제(레코드 제거) 지원.** 기존에는 "삭제 없음, active=false만" 이었으나, Admin에게 완전 삭제 권한을 요청받아 `DELETE /api/users/:userId`를 신설했다. Admin 전용, 본인 계정 삭제 불가, 마지막 활성 Admin 삭제 금지(기존 `update()`의 보호 로직과 동일). 삭제해도 기존 Issue의 등록자/조치자 표시는 스냅샷(nameSnapshot/teamSnapshot, D-25)으로 유지되어 깨지지 않지만, 그 userId로의 재조회(재로그인, 담당자 지정 등)는 이후 불가능해진다. 일상적인 비활성화(active=false)는 계속 지원하며 UI에서도 "완전 삭제보다 비활성화 권장" 안내를 유지한다. |
 | D-20 | 손상 파일 처리 | 07 §17 | 시작 시 파싱 실패 Issue를 격리(corrupted)하고 해당 ID 쓰기 차단. users/config/sequence 손상 시 서비스 시작 중단. sequence.json 유실 시 Issue 파일 기준 자동 보정. |
 | D-21 | Audit 실패 | - | Issue 저장 성공 후 Audit append 실패 시 Issue 저장을 되돌리지 않고 error 로그에 기록. (History는 Issue 파일에도 있으므로 유실 없음) |
 | D-23 | 텍스트 정규화 | 01 §22 | 제어문자 제거, CR/CRLF→LF, 줄 끝 공백 제거, 3줄 이상 연속 빈 줄→2줄, 앞뒤 trim. 단일행 필드는 개행→공백. HTML은 escape하지 않고 원문 저장, 렌더링은 textContent. |
@@ -38,6 +38,7 @@
 | D-22 | 로그 | 07 §16 | access 로그는 requestId/method/path/status/elapsed/errorCode만 기록. Comment 본문/첨부 미기록. |
 | D-31 | Dashboard/Kanban/목록 필터 유지 | 사용자 피드백("다른 화면 이동 후 돌아오면 조회조건이 초기화됨") | 각 화면의 마지막 조회 조건(query)을 `localStorage`(`dms.filter.<화면>`, 로그아웃 후에도 유지)에 저장한다. 사이드바 메뉴처럼 query 없이 순수 경로로 진입할 때만 저장된 값으로 복원(`{replace:true}`)하고, Dashboard Drill-down처럼 명시적 조건을 들고 들어온 경우는 그 조건을 그대로 존중해 복원하지 않는다. 목록의 "필터 초기화" 버튼은 이동 직전에 빈 값을 즉시 저장해, 초기화 직후 재진입 시 방금 지운 필터가 다시 복원되는 루프를 방지한다. |
 | D-32 | Issue 임시저장(DRAFT) | 사용자 요청("등록시 임시저장하고 수정, 내가 등록에서만 노출") | `STATUS.DRAFT`를 신설해 Cancel과 동일한 패턴(기본 조회에서 암묵적 제외, `status=DRAFT`/`ALL`/`includeDraft=true`로만 노출)으로 Dashboard/Kanban/목록에서 자동 제외했다. 임시저장 검증은 "유형만 있으면 저장 가능"(사용자 확정 방침)한 관대한 `V.draftCreate()`로 처리하고, 정식 등록 전환(`POST .../actions/submit`, DRAFT→OPEN)에서만 결함/개선요청/문의 각각의 정식 필수값(`defectCreate` 등)으로 재검증한다. 노출 범위는 작성자 본인과 Quality Admin으로 한정했다(사용자 확정 방침) — `IssueQuery.applyFilters`에 "DRAFT는 reporter 본인 또는 Admin만" 필터를 statuses 지정 여부와 무관하게 항상 적용하고, `IssueService.getDetail`도 동일 규칙으로 타인에게는 404(존재 자체를 숨김)를 반환한다. "내가 등록" 탭은 `mine=reported&includeDraft=true`로 조회하며, DRAFT 행은 상세가 아니라 등록 화면(`#/new/:type?draftId=`)의 "이어 작성"으로 연결된다. `updateDraft`는 `changes`에 없는 필드까지 빈 값으로 덮어쓰지 않도록 기존 값과 병합 후 재검증한다(부분 갱신). |
+| D-33 | Issue 완전 삭제 | 사용자 요청(2026-09-29, "admin은 이슈삭제권한, 사용자삭제권한을 부여") | Cancel(상태만 CANCEL로 전환, 이력 보존)과 별개로 `DELETE /api/issues/:id`를 신설해 Issue 파일(.json/.bak)과 첨부파일 디렉터리(`uploads/{issueId}/`)를 완전히 삭제한다. Admin 전용, 상태 무관(Open/진행중/Closed 어떤 상태든 삭제 가능 — 사용자 확정 방침). `IssueRepository.remove()`는 반드시 `withLock` 안에서 호출하며, 캐시(`this.cache`)와 corrupted 목록에서도 함께 제거한다. Issue 자체가 사라지므로 삭제 이력은 Issue의 history가 아니라 `AuditRepository`에 `ISSUE_DELETED` 이벤트로만 남긴다(D-21과 동일하게 append 실패해도 삭제 자체는 롤백하지 않음). 복구는 전체 백업 스냅샷(`scripts/restore.js`) 단위로만 가능하고 개별 Issue 단위 복구는 지원하지 않는다. 프론트는 상세 화면의 "더보기"(관리자 메뉴)에 "Issue 완전 삭제" 항목을 추가하고 `confirmModal`로 1회 확인 후 목록 화면으로 이동시킨다. |
 
 ## TODO (운영 전 확인)
 

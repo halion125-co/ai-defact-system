@@ -1,9 +1,11 @@
 'use strict';
 
+const fs = require('fs');
 const { errors } = require('../utils/errors');
 const { nowIso } = require('../utils/time');
 const { padNumber, formatIssueId } = require('../utils/id');
 const { makeTitle, richTextToPlainText } = require('../utils/text');
+const { safeJoin } = require('../utils/fsutil');
 const V = require('../validators/validators');
 const P = require('../permissions/permissions');
 const { ISSUE_PREFIX, STATUS, PRIORITY, EVENT, DEPLOYMENT_STATUS } = require('../models/constants');
@@ -13,12 +15,13 @@ const { applyFilters, sortIssues, toSummary } = require('./IssueQuery');
  * Issue 생성/조회/등록내용 수정 + 모든 Mutation의 공통 코어(mutate).
  */
 class IssueService {
-  constructor({ issueRepo, sequenceRepo, auditRepo, userService, configService, logger }) {
+  constructor({ issueRepo, sequenceRepo, auditRepo, userService, configService, uploadDir, logger }) {
     this.issueRepo = issueRepo;
     this.sequenceRepo = sequenceRepo;
     this.auditRepo = auditRepo;
     this.userService = userService;
     this.configService = configService;
+    this.uploadDir = uploadDir;
     this.logger = logger;
   }
 
@@ -252,6 +255,41 @@ class IssueService {
       ctx.event(EVENT.UPDATED, { before, after, data: { fields: Object.keys(after), byAdmin: !!user.isQualityAdmin && !P.isReporter(user, iss) } });
     });
     return { id: issue.id, revision: issue.revision };
+  }
+
+  /* ---------------- 완전 삭제 (Admin 전용, 복구 불가) ---------------- */
+
+  /**
+   * Issue 파일(.json/.bak)과 첨부파일 디렉터리를 완전히 삭제한다.
+   * mutate()는 삭제 후 파일이 존재하지 않아 재사용할 수 없으므로, lock 안에서 직접 처리하고
+   * audit에만 기록한다(이슈 자체가 사라지므로 history 이벤트를 남길 대상이 없다).
+   */
+  async deleteIssue(user, issueId) {
+    if (!P.canDeleteIssue(user)) throw errors.forbidden('Issue 삭제는 Quality Admin만 가능합니다.');
+    const current = this.getRaw(issueId);
+    await this.issueRepo.withLock(issueId, async () => {
+      this.issueRepo.remove(issueId);
+    });
+    if (this.uploadDir) {
+      try {
+        fs.rmSync(safeJoin(this.uploadDir, issueId), { recursive: true, force: true });
+      } catch (err) {
+        if (this.logger) this.logger.error('Issue 삭제: 첨부파일 디렉터리 제거 실패', { issueId, reason: err.message });
+      }
+    }
+    const now = nowIso();
+    const actor = this.userService.snapshot(user);
+    this.auditRepo.append({
+      eventId: `EVT-${padNumber(await this.sequenceRepo.next('EVT'), 6)}`,
+      eventType: EVENT.ISSUE_DELETED,
+      actor,
+      actorId: actor.userId,
+      timestamp: now,
+      issueId,
+      data: { type: current.type, status: current.status, title: current.title },
+    });
+    if (this.logger) this.logger.info('Issue 완전 삭제', { issueId, actor: actor.userId });
+    return { id: issueId };
   }
 }
 

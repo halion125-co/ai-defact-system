@@ -82,6 +82,20 @@ class UserRepository {
       return { ...updated };
     });
   }
+
+  /** 사용자 레코드를 완전히 제거한다(복구 불가, Admin 전용 파괴적 작업). seq는 되돌리지 않는다. */
+  async remove(userId) {
+    return this.mutex.withLock('users', async () => {
+      const idx = this.state.users.findIndex((x) => x.userId === userId);
+      if (idx < 0) return false;
+      const users = this.state.users.slice();
+      users.splice(idx, 1);
+      const next = { ...this.state, users };
+      writeJsonAtomic(this.file, next);
+      this.state = next;
+      return true;
+    });
+  }
 }
 
 module.exports = { UserRepository };

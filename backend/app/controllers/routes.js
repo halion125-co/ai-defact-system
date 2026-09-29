@@ -89,6 +89,7 @@ function buildRoutes(c) {
   );
   r.get('/api/users', async (ctx) => ({ body: { users: c.userService.list(ctx.query) } }));
   r.patch('/api/users/:userId', async (ctx) => ({ body: { user: await c.userService.update(ctx.user, ctx.params.userId, ctx.body) } }));
+  r.delete('/api/users/:userId', async (ctx) => ({ body: await c.userService.deleteUser(ctx.user, ctx.params.userId) }));
 
   /* ---------- Config ---------- */
   r.get('/api/config/project', async () => ({ body: c.configService.getProject() }), PUBLIC);
@@ -109,6 +110,7 @@ function buildRoutes(c) {
   r.post('/api/issues/drafts', async (ctx) => ({ status: 201, body: await c.issueService.createDraft(ctx.user, ctx.body && ctx.body.type, ctx.body) }));
   r.get('/api/issues/:id', async (ctx) => ({ body: c.issueService.getDetail(ctx.user, ctx.params.id) }));
   r.patch('/api/issues/:id', async (ctx) => ({ body: await c.issueService.updateContent(ctx.user, ctx.params.id, ctx.body) }));
+  r.delete('/api/issues/:id', async (ctx) => ({ body: await c.issueService.deleteIssue(ctx.user, ctx.params.id) }));
   r.patch('/api/issues/:id/draft', async (ctx) => ({ body: await c.issueService.updateDraft(ctx.user, ctx.params.id, ctx.body) }));
 
   /* ---------- Actions ---------- */

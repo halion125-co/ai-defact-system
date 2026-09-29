@@ -47,6 +47,12 @@ const canAttach = (user, issue) => (isAdmin(user) || isReporter(user, issue) || 
 
 const canDeleteAttachment = (user, attachment) => isAdmin(user) || (attachment && attachment.uploadedBy === user.userId);
 
+/** Issue 완전 삭제(파일 자체 제거, 복구 불가). Admin 전용, 상태 무관. */
+const canDeleteIssue = (user) => isAdmin(user);
+
+/** 사용자 완전 삭제(레코드 제거, 복구 불가). Admin 전용. 본인 계정은 삭제할 수 없다(마지막 활성 Admin 보호와 동일한 취지). */
+const canDeleteUser = (actor, target) => isAdmin(actor) && (!target || target.userId !== actor.userId);
+
 const canDeploy = (user, issue, operation) =>
   !!(operation && operation.enableDeployment) &&
   canWorkflow(user, issue) &&
@@ -74,6 +80,7 @@ function permissionHints(user, issue, operation) {
     canHideComment: canHideComment(user),
     canAttach: canAttach(user, issue),
     canDeploy: canDeploy(user, issue, operation),
+    canDeleteIssue: canDeleteIssue(user),
   };
 }
 
@@ -97,6 +104,8 @@ module.exports = {
   canHideComment,
   canAttach,
   canDeleteAttachment,
+  canDeleteIssue,
+  canDeleteUser,
   canDeploy,
   canManageConfig,
   permissionHints,

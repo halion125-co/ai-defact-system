@@ -93,6 +93,20 @@ class IssueRepository {
   corruptedList() {
     return [...this.corrupted.entries()].map(([id, reason]) => ({ id, reason }));
   }
+
+  /** Issue 파일(.json/.bak)을 완전히 삭제한다. 반드시 withLock 내부에서 호출. 복구 불가(Admin 전용 파괴적 작업). */
+  remove(id) {
+    const file = this.filePath(id);
+    for (const p of [file, `${file}.bak`]) {
+      try {
+        fs.unlinkSync(p);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+    this.cache.delete(id);
+    this.corrupted.delete(id);
+  }
 }
 
 module.exports = { IssueRepository };

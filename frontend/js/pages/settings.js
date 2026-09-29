@@ -133,7 +133,7 @@ async function tabPriorities(content) {
 /* ---------- 사용자 ---------- */
 async function tabUsers(content) {
   const wrap = h('div', {}, loadingState(5));
-  content.append(card('사용자', wrap, { headRight: h('span', { class: 'small muted' }, 'Quality Admin 지정/해제 · 비활성화(삭제 대신)') }));
+  content.append(card('사용자', wrap, { headRight: h('span', { class: 'small muted' }, 'Quality Admin 지정/해제 · 비활성화 · 완전 삭제') }));
   async function load() {
     clear(wrap).append(loadingState(5));
     try {
@@ -166,9 +166,14 @@ async function tabUsers(content) {
         act.addEventListener('click', async () => {
           try { await api.users.update(u.userId, { active: !u.active }); toast('변경되었습니다.', 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
         });
-        tbody.append(h('tr', {}, h('td', { class: 'mono' }, u.employeeId), h('td', {}, u.name), h('td', {}, u.team), h('td', {}, u.isQualityAdmin ? h('span', { class: 'badge admin' }, 'Quality Admin') : (u.isResponder ? h('span', { class: 'badge neutral' }, '조치자') : h('span', { class: 'small muted' }, '일반 사용자'))), h('td', {}, h('span', { class: `badge ${u.active ? 'status-CLOSED' : 'neutral'}` }, u.active ? '활성' : '비활성')), h('td', { class: 'nowrap' }, fmtDateTime(u.createdAt)), h('td', {}, h('div', { class: 'flex' }, edit, admin, responder, act))));
+        const del = h('button', { class: 'btn btn-xs btn-danger', disabled: u.userId === store.user.userId }, '삭제');
+        del.addEventListener('click', async () => {
+          if (!(await confirmModal({ title: '사용자 완전 삭제', message: `${josa(u.name, '을/를')} 완전히 삭제합니다. 복구할 수 없습니다. 등록/조치했던 기존 Issue의 이름·소속 표시는 유지되지만, 이 사번으로는 다시 로그인할 수 없습니다.`, confirmLabel: '완전 삭제', variant: 'btn-danger' }))) return;
+          try { await api.users.remove(u.userId); toast(`${u.employeeId} 사용자가 삭제되었습니다.`, 'success'); load(); } catch (err) { toast(errorMessage(err), 'error'); }
+        });
+        tbody.append(h('tr', {}, h('td', { class: 'mono' }, u.employeeId), h('td', {}, u.name), h('td', {}, u.team), h('td', {}, u.isQualityAdmin ? h('span', { class: 'badge admin' }, 'Quality Admin') : (u.isResponder ? h('span', { class: 'badge neutral' }, '조치자') : h('span', { class: 'small muted' }, '일반 사용자'))), h('td', {}, h('span', { class: `badge ${u.active ? 'status-CLOSED' : 'neutral'}` }, u.active ? '활성' : '비활성')), h('td', { class: 'nowrap' }, fmtDateTime(u.createdAt)), h('td', {}, h('div', { class: 'flex' }, edit, admin, responder, act, del))));
       }
-      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속팀', '역할', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '사용자는 삭제하지 않고 비활성화합니다. 과거 Issue/History에는 계속 표시됩니다. 본인 계정은 Admin 해제/비활성화할 수 없습니다. 조치자가 아닌 사용자는 본인이 등록한 Issue만 조회할 수 있습니다.'));
+      wrap.append(h('div', { class: 'table-wrap' }, h('table', { class: 'table' }, h('thead', {}, h('tr', {}, ...['사번', '이름', '소속팀', '역할', 'Active', '등록일', ''].map((c) => h('th', {}, c)))), tbody)), h('div', { class: 'small muted mt-8' }, '일반적인 상황에서는 삭제 대신 비활성화를 권장합니다(과거 Issue/History에 계속 표시됨). 완전 삭제는 되돌릴 수 없습니다. 본인 계정은 Admin 해제/비활성화/삭제할 수 없습니다. 조치자가 아닌 사용자는 본인이 등록한 Issue만 조회할 수 있습니다.'));
     } catch (err) {
       clear(wrap).append(errorBox(err, load));
     }

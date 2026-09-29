@@ -80,6 +80,7 @@ export const api = {
     register: (data) => request('POST', '/api/users', { body: data }),
     list: (params) => request('GET', '/api/users' + qs(params)),
     update: (userId, data) => request('PATCH', `/api/users/${userId}`, { body: data }),
+    remove: (userId) => request('DELETE', `/api/users/${userId}`),
   },
   config: {
     project: () => request('GET', '/api/config/project'),
@@ -107,6 +108,7 @@ export const api = {
     upload: (id, formData) => request('POST', `/api/issues/${id}/attachments`, { form: formData }),
     deleteAttachment: (id, attId, expectedRevision) => request('DELETE', `/api/issues/${id}/attachments/${attId}${qs({ expectedRevision })}`),
     deploy: (id, body) => request('POST', `/api/issues/${id}/deployments`, { body }),
+    remove: (id) => request('DELETE', `/api/issues/${id}`),
   },
   dashboard: {
     summary: (p) => request('GET', '/api/dashboard/summary' + qs(p)),

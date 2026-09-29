@@ -548,6 +548,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .more-pop { position: absolute; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 16px rgba(23,32,51,0.12); min-width: 200px; z-index: 30; padding: 4px; }
 .more-item { display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm); border: none; background: none; font-size: 13px; color: var(--text); }
 .more-item:hover { background: var(--gray-soft); }
+.more-item.danger { color: var(--danger); }
+.more-item.danger:hover { background: var(--danger-soft); }
+.more-sep { height: 1px; margin: 4px 2px; background: var(--border); }
 
 /* 활동(Timeline + Comment 통합) */
 .activity-tabs { display: flex; gap: 6px; margin-bottom: 14px; }

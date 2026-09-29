@@ -285,7 +285,8 @@ test('요청 크기/경로/메서드 방어', async (t) => {
   assert.equal((await rep.get('/api/issues/../../users.json')).status, 404);
   assert.equal((await rep.get('/api/issues/DEF-9999')).status, 404);
   assert.equal((await rep.get('/api/issues/%2e%2e%2f%2e%2e%2fsequence')).status, 404);
-  assert.equal((await rep.req('DELETE', '/api/issues/DEF-0001')).status, 405);
+  // DELETE /api/issues/:id는 Admin 전용 삭제 라우트로 지원됨(일반 사용자는 403)
+  assert.equal((await rep.req('DELETE', '/api/issues/DEF-0001')).status, 403);
   assert.equal((await rep.req('PUT', '/api/issues')).status, 405);
   assert.equal((await rep.get('/api/issues/DEF-0001/attachments/ATT-001')).status, 404);
   // 목록 쿼리 이상값은 무시/기본값

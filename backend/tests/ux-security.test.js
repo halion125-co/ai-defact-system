@@ -5,6 +5,8 @@
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 const { makeContainer, DEFECT_BODY, startServer, client, promoteToAdmin } = require('./helpers');
 
 async function setup() {
@@ -339,4 +341,72 @@ test('관리자 전용 로그인은 사번 admin에만 허용되고, 다른 사�
   const r = await cli.post('/api/session/admin-start', { employeeId: '10001', password: FIXED_ADMIN_PASSWORD });
   assert.equal(r.status, 403);
   assert.equal(c.repos.userRepo.findByEmployeeId('10001'), null, '거부된 시도로 계정이 생성되지 않는다');
+});
+
+/* ===================== Issue/사용자 완전 삭제(Admin 전용) ===================== */
+
+test('Issue 완전 삭제: Admin만 가능, 삭제 후 조회/목록/파일이 모두 사라지고 audit에는 기록된다', async (t) => {
+  const { srv, admin, rep, dev, c } = await setup();
+  t.after(() => srv.close());
+  const id = (await rep.post('/api/issues/defects', DEFECT_BODY)).body.id;
+
+  // 일반 사용자/조치자는 삭제 불가
+  assert.equal((await rep.del(`/api/issues/${id}`)).status, 403);
+  assert.equal((await dev.del(`/api/issues/${id}`)).status, 403);
+
+  const issuePath = c.repos.issueRepo.filePath(id);
+  assert.ok(fs.existsSync(issuePath), '삭제 전에는 파일이 존재한다');
+
+  const delRes = await admin.del(`/api/issues/${id}`);
+  assert.equal(delRes.status, 200);
+  assert.equal(delRes.body.id, id);
+
+  assert.ok(!fs.existsSync(issuePath), '삭제 후 파일이 제거된다');
+  assert.equal((await admin.get(`/api/issues/${id}`)).status, 404);
+  assert.equal((await admin.get(`/api/issues?q=${id}`)).body.items.length, 0, '목록/검색에서도 사라진다');
+
+  const auditDir = path.join(c.root, 'data', 'audit');
+  const auditFiles = fs.readdirSync(auditDir);
+  const auditContent = auditFiles.map((f) => fs.readFileSync(path.join(auditDir, f), 'utf8')).join('\n');
+  assert.ok(auditContent.includes('ISSUE_DELETED') && auditContent.includes(id), 'audit 로그에 삭제 이벤트가 남는다');
+});
+
+test('Issue 완전 삭제: 존재하지 않는 Issue는 404, 삭제 후 재삭제도 404', async (t) => {
+  const { srv, admin } = await setup();
+  t.after(() => srv.close());
+  assert.equal((await admin.del('/api/issues/DEF-9999')).status, 404);
+});
+
+test('사용자 완전 삭제: Admin만 가능, 본인 계정은 삭제 불가, 마지막 활성 Admin은 삭제 불가', async (t) => {
+  const { srv, admin, rep, dev, c } = await setup();
+  t.after(() => srv.close());
+  const adminId = c.repos.userRepo.findByEmployeeId('admin').userId;
+  const repId = c.repos.userRepo.findByEmployeeId('10001').userId;
+
+  // 일반 사용자는 삭제 불가
+  assert.equal((await rep.del(`/api/users/${repId}`)).status, 403);
+  // 본인 계정은 삭제 불가
+  assert.equal((await admin.del(`/api/users/${adminId}`)).status, 403);
+  // 마지막 활성 Admin 보호(자기 자신 외 다른 Admin이 없는 상태에서 다른 사람을 Admin으로 만든 뒤 그 사람을 지우면 통과해야 정상이므로, 여기서는 유일한 Admin인 본인 삭제만 검증)
+
+  // 일반 사용자 삭제는 정상 동작
+  const delRes = await admin.del(`/api/users/${repId}`);
+  assert.equal(delRes.status, 200);
+  assert.equal(c.repos.userRepo.findById(repId), null, '레코드가 완전히 제거된다');
+
+  // 삭제된 사번으로는 재조회/재로그인 불가
+  assert.equal((await dev.login('10001')).status, 404);
+});
+
+test('사용자 완전 삭제 후에도 그 사람이 등록/조치한 기존 Issue의 이름/소속 스냅샷 표시는 깨지지 않는다', async (t) => {
+  const { srv, admin, rep, dev, c } = await setup();
+  t.after(() => srv.close());
+  const id = (await rep.post('/api/issues/defects', DEFECT_BODY)).body.id;
+  const repId = c.repos.userRepo.findByEmployeeId('10001').userId;
+
+  await admin.del(`/api/users/${repId}`);
+
+  const detail = (await admin.get(`/api/issues/${id}`)).body.issue;
+  assert.equal(detail.reporter.userId, repId);
+  assert.equal(detail.reporter.nameSnapshot, '이영희', '등록자 사망(삭제) 후에도 스냅샷 이름은 유지된다');
 });

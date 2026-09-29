@@ -348,6 +348,22 @@ export async function renderDetail(main, { params, navigate }) {
         onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: v.reason }), '취소 처리되었습니다.'),
       });
     }
+    async function openDeleteIssue() {
+      const ok = await confirmModal({
+        title: 'Issue 완전 삭제',
+        message: `${issue.id}를 완전히 삭제합니다. 첨부파일과 이력을 포함해 복구할 수 없습니다.`,
+        confirmLabel: '완전 삭제',
+        variant: 'btn-danger',
+      });
+      if (!ok) return;
+      try {
+        await api.issues.remove(issue.id);
+        toast(`${issue.id}가 삭제되었습니다.`, 'success');
+        navigate('/issues/list');
+      } catch (err) {
+        toast(errorMessage(err), 'error');
+      }
+    }
     function openAdminOverride() {
       formModal({
         title: '관리자 상태 강제 변경',
@@ -528,8 +544,13 @@ export async function renderDetail(main, { params, navigate }) {
     }
 
     function buildMoreMenu(issue, p) {
-      if (!p.canAdminOverride) return null;
-      const pop = h('div', { class: 'more-pop hidden' }, h('button', { class: 'more-item', onClick: () => { pop.classList.add('hidden'); openAdminOverride(); } }, '관리자: 상태 강제 변경'));
+      if (!p.canAdminOverride && !p.canDeleteIssue) return null;
+      const pop = h('div', { class: 'more-pop hidden' });
+      if (p.canAdminOverride) pop.append(h('button', { class: 'more-item', onClick: () => { pop.classList.add('hidden'); openAdminOverride(); } }, '관리자: 상태 강제 변경'));
+      if (p.canDeleteIssue) {
+        if (p.canAdminOverride) pop.append(h('div', { class: 'more-sep' }));
+        pop.append(h('button', { class: 'more-item danger', onClick: () => { pop.classList.add('hidden'); openDeleteIssue(); } }, '관리자: Issue 완전 삭제'));
+      }
       const btn = h('button', { class: 'btn btn-ghost btn-sm', title: '더보기', 'aria-label': '관리자 기능 더보기', onClick: (e) => { e.stopPropagation(); pop.classList.toggle('hidden'); } }, icon('more', { size: 15 }));
       const wrap = h('div', { class: 'more-menu' }, btn, pop);
       document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) pop.classList.add('hidden'); }, { once: false });
