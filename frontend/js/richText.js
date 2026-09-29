@@ -3,7 +3,7 @@
  * 서버(backend/app/utils/text.js sanitizeRichText)와 동일한 허용목록을 따르며, innerHTML을 쓰는 유일한 통로다.
  * 붙여넣기(Ctrl+V)로 들어온 이미지는 본문에 임시 미리보기로 표시하고, 실제 업로드는 폼 제출 시점에 일괄 처리한다.
  */
-import { h } from './ui.js';
+import { h, toast } from './ui.js';
 
 function escapeHtml(s) {
   return String(s ?? '')
@@ -76,12 +76,18 @@ export function renderIssueBodyText(raw, tag = 'div', cls = 'body') {
 
 let pendingSeq = 0;
 
+/** 서버가 허용하는 이미지 확장자와 MIME의 매핑. 클립보드 File의 실제 타입에 맞는 확장자를 붙여야
+ * 서버의 매직바이트 검사(파일 내용과 확장자 일치 검증)를 통과한다 — file.name이 비어있다고
+ * 무조건 .png로 가정하면, 실제로는 bmp/jpeg 등인 클립보드 이미지가 "파일 내용이 확장자와
+ * 일치하지 않습니다" 오류로 거부된다. */
+const IMAGE_EXT_BY_MIME = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif' };
+
 /**
  * contenteditable 기반 리치 텍스트 에디터. 이미지 붙여넣기 시 즉시 미리보기(blob:)를 삽입하고,
  * onImagePending 콜백으로 { pendingId, file }을 전달한다(호출부가 files 배열에 보관했다가 제출 시 업로드).
  * getValue()는 항상 sanitize된 HTML을 반환한다.
  */
-export function createRichTextEditor({ id, placeholder = '', initialHtml = '', onImagePending } = {}) {
+export function createRichTextEditor({ id, placeholder = '', initialHtml = '', onImagePending, onImageRejected } = {}) {
   const editor = h('div', {
     id,
     class: 'rte-editor input',
@@ -97,9 +103,18 @@ export function createRichTextEditor({ id, placeholder = '', initialHtml = '', o
     const imageItem = items.find((it) => it.type && it.type.startsWith('image/'));
     if (imageItem) {
       e.preventDefault();
-      const file = imageItem.getAsFile();
-      if (!file) return;
+      const rawFile = imageItem.getAsFile();
+      if (!rawFile) return;
+      // 클립보드 File은 name이 거의 항상 비어있다. 확장자는 실제 MIME(file.type) 기준으로 정해야
+      // 업로드 시 파일명-내용 불일치로 거부되지 않는다(지원 포맷: png/jpg/gif).
+      const ext = IMAGE_EXT_BY_MIME[rawFile.type];
+      if (!ext) {
+        if (onImageRejected) onImageRejected({ mimeType: rawFile.type });
+        else toast('지원하지 않는 이미지 형식입니다. PNG/JPG/GIF로 저장한 뒤 다시 붙여넣어 주세요.', 'error', { timeout: 6000 });
+        return;
+      }
       const pendingId = `pending-${Date.now()}-${pendingSeq++}`;
+      const file = new File([rawFile], `${pendingId}.${ext}`, { type: rawFile.type });
       const blobUrl = URL.createObjectURL(file);
       insertImageAtCursor(editor, blobUrl, pendingId);
       if (onImagePending) onImagePending({ pendingId, file, blobUrl });
