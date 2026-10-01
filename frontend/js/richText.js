@@ -14,7 +14,7 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-const SAFE_IMG_SRC_RE = /^\/api\/issues\/(DEF|IMP|INQ)-\d{4,}\/attachments\/ATT-\d{3,}$/;
+const SAFE_IMG_SRC_RE = /^\/api\/issues\/(DEF|IMP|INQ)-\d{4,}\/attachments\/ATT-\d{3,}(\?inline=1)?$/;
 // 등록 폼에서 아직 서버에 없는 이미지의 임시 미리보기(blob: URL)도 화면 표시용으로만 허용한다.
 // 저장 시점에는 이 blob: img가 실제 첨부 업로드 후 SAFE_IMG_SRC_RE 형태로 반드시 치환되어야 한다(치환 전 저장 금지).
 const PREVIEW_IMG_SRC_RE = /^blob:/;
@@ -113,8 +113,11 @@ export function createRichTextEditor({ id, placeholder = '', initialHtml = '', o
         else toast('지원하지 않는 이미지 형식입니다. PNG/JPG/GIF로 저장한 뒤 다시 붙여넣어 주세요.', 'error', { timeout: 6000 });
         return;
       }
-      const pendingId = `pending-${Date.now()}-${pendingSeq++}`;
-      const file = new File([rawFile], `${pendingId}.${ext}`, { type: rawFile.type });
+      const seq = ++pendingSeq;
+      const pendingId = `pending-${Date.now()}-${seq}`;
+      // pendingId는 DOM 치환 추적용 내부 식별자일 뿐이므로, 업로드 파일명은 사람이 읽기 좋은 이름으로 따로 짓는다
+      // (그대로 쓰면 첨부파일 목록에 "pending-1790845...png"가 영구 파일명으로 남는다).
+      const file = new File([rawFile], `붙여넣은이미지-${seq}.${ext}`, { type: rawFile.type });
       const blobUrl = URL.createObjectURL(file);
       insertImageAtCursor(editor, blobUrl, pendingId);
       if (onImagePending) onImagePending({ pendingId, file, blobUrl });

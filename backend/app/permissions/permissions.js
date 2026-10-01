@@ -25,6 +25,10 @@ const canWorkflow = (user, issue) => isAdmin(user) || isAssignee(user, issue);
 const canStart = (user, issue) => canWorkflow(user, issue) && issue.status === STATUS.OPEN;
 const canResolve = (user, issue) => canWorkflow(user, issue) && issue.status === STATUS.IN_PROGRESS;
 
+/** 조치완료 후(확인대기/완료) 조치 결과 내용만 고친다. 상태 전이는 없다. */
+const canEditResolution = (user, issue) =>
+  canWorkflow(user, issue) && (issue.status === STATUS.DONE || issue.status === STATUS.CLOSED);
+
 const canReopen = (user, issue) =>
   (isAdmin(user) || isReporter(user, issue) || isAssignee(user, issue)) &&
   (issue.status === STATUS.DONE || issue.status === STATUS.CLOSED);
@@ -71,6 +75,7 @@ function permissionHints(user, issue, operation) {
     canChangePriority: canChangePriority(user, issue),
     canStart: canStart(user, issue),
     canResolve: canResolve(user, issue),
+    canEditResolution: canEditResolution(user, issue),
     canReopen: canReopen(user, issue),
     canCloseVerified: canCloseVerified(user, issue),
     canCloseAgreed: canCloseAgreed(user, issue),
@@ -95,6 +100,7 @@ module.exports = {
   canWorkflow,
   canStart,
   canResolve,
+  canEditResolution,
   canReopen,
   canCloseVerified,
   canCloseAgreed,

@@ -121,6 +121,7 @@ function buildRoutes(c) {
     priority: (ctx) => c.workflowService.changePriority(ctx.user, ctx.params.id, ctx.body),
     start: (ctx) => c.workflowService.start(ctx.user, ctx.params.id, ctx.body),
     resolve: (ctx) => c.workflowService.resolve(ctx.user, ctx.params.id, ctx.body),
+    'edit-resolution': (ctx) => c.workflowService.editResolution(ctx.user, ctx.params.id, ctx.body),
     reopen: (ctx) => c.workflowService.reopen(ctx.user, ctx.params.id, ctx.body),
     close: (ctx) => c.workflowService.close(ctx.user, ctx.params.id, ctx.body),
     cancel: (ctx) => c.workflowService.cancel(ctx.user, ctx.params.id, ctx.body),

@@ -31,7 +31,7 @@ function escapeHtml(s) {
  * DOMPurify 등 외부 라이브러리를 쓰지 않는 폐쇄망 정책상 정규식 기반으로 직접 구현했으므로,
  * 매우 좁은 허용목록(allowlist)만 통과시키고 나머지는 전부 텍스트로 escape하는 보수적인 방식을 취한다.
  */
-const SAFE_IMG_SRC_RE = /^\/api\/issues\/(DEF|IMP|INQ)-\d{4,}\/attachments\/ATT-\d{3,}$/;
+const SAFE_IMG_SRC_RE = /^\/api\/issues\/(DEF|IMP|INQ)-\d{4,}\/attachments\/ATT-\d{3,}(\?inline=1)?$/;
 
 function sanitizeRichText(html) {
   if (!html) return '';
@@ -91,12 +91,17 @@ function richTextIsEmpty(sanitized) {
   return textOnly === '';
 }
 
-/** sanitizeRichText 결과를 makeTitle 등에 넘길 순수 텍스트로 변환한다(태그 제거, <br>→개행, HTML entity 복원). */
+/** sanitizeRichText 결과를 makeTitle 등에 넘길 순수 텍스트로 변환한다(태그 제거, <br>→개행, HTML entity 복원).
+ * 이미지는 장당 [이미지]를 남기면 여러 장 붙여넣었을 때 "[이미지][이미지]..."로 나열되어 가독성이 떨어지므로,
+ * 연속된 이미지 태그는 한 번에 세어 "[이미지 N장]"으로 요약한다. */
 function richTextToPlainText(sanitized) {
   return String(sanitized || '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/?(b|strong)>/gi, '')
-    .replace(/<img\b[^>]*>/gi, '[이미지]')
+    .replace(/(?:<img\b[^>]*>)+/gi, (run) => {
+      const count = (run.match(/<img\b[^>]*>/gi) || []).length;
+      return count > 1 ? `[이미지 ${count}장]` : '[이미지]';
+    })
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

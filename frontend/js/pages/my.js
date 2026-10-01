@@ -55,7 +55,7 @@ function doResolve(it, reload) {
           const up = await api.issues.upload(it.id, fd);
           curRev = up.revision;
           const att = up.attachments && up.attachments[0];
-          if (att) idToUrl.set(pendingId, `/api/issues/${it.id}/attachments/${att.attachmentId}`);
+          if (att) idToUrl.set(pendingId, `/api/issues/${it.id}/attachments/${att.attachmentId}?inline=1`);
         }
         description.rte.resolvePendingImages(idToUrl);
       }

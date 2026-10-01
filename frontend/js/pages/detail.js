@@ -189,8 +189,8 @@ export async function renderDetail(main, { params, navigate }) {
     const sideKv = h(
       'div',
       { class: 'side-kv' },
-      h('div', { class: 'row' }, h('span', { class: 'k' }, '조치자'), h('span', { class: 'v' }, issue.assignee ? userLabel(issue.assignee) : h('span', { class: 'badge warn' }, '미지정'), p.canAssign ? h('button', { class: 'btn btn-ghost btn-xs', onClick: openAssign }, '변경') : null)),
-      h('div', { class: 'row' }, h('span', { class: 'k' }, 'Priority'), h('span', { class: 'v' }, priorityBadge(issue.priority), p.canChangePriority ? h('button', { class: 'btn btn-ghost btn-xs', onClick: openPriority }, '변경') : null)),
+      h('div', { class: 'row' }, h('span', { class: 'k' }, '조치자'), h('span', { class: 'v' }, issue.assignee ? userLabel(issue.assignee) : h('span', { class: 'badge warn' }, '미지정'), p.canAssign ? h('button', { class: 'btn btn-primary btn-xs', onClick: openAssign }, '변경') : null)),
+      h('div', { class: 'row' }, h('span', { class: 'k' }, 'Priority'), h('span', { class: 'v' }, priorityBadge(issue.priority), p.canChangePriority ? h('button', { class: 'btn btn-primary btn-xs', onClick: openPriority }, '변경') : null)),
       h('div', { class: 'row' }, h('span', { class: 'k' }, '상태'), h('span', { class: 'v' }, statusBadge(issue.status)))
     );
 
@@ -203,7 +203,7 @@ export async function renderDetail(main, { params, navigate }) {
       ? h(
           'div',
           { class: 'trace' },
-          h('div', { style: { gridColumn: '1 / -1' } }, h('div', { class: 'k' }, '조치 결과'), resolutionBody),
+          h('div', { style: { gridColumn: '1 / -1' } }, resolutionBody),
           op.enableChangeReference ? traceRow('Change Reference', r && r.changeReference, true) : null,
           traceRow('반영 예정 버전', r && r.targetVersion),
           traceRow('최초 조치완료', r && r.firstResolvedAt ? fmtDateTime(r.firstResolvedAt) : null),
@@ -219,7 +219,7 @@ export async function renderDetail(main, { params, navigate }) {
         'div',
         { class: 'detail-grid' },
         h('div', { class: 'detail-main' }, summary, content, activity),
-        h('aside', { class: 'detail-side' }, card('다음 작업', nextActionBody), card('조치 / 배정', sideKv), card('조치 결과 · Traceability', traceBody))
+        h('aside', { class: 'detail-side' }, card('다음 작업', nextActionBody), card('조치 / 배정', sideKv), card('조치 결과 · Traceability', traceBody, { headRight: p.canEditResolution ? h('button', { class: 'btn btn-primary btn-xs', onClick: openEditResolution }, '수정') : null }))
       )
     );
 
@@ -277,7 +277,7 @@ export async function renderDetail(main, { params, navigate }) {
                 const up = await api.issues.upload(issue.id, fd);
                 curRev = up.revision;
                 const att = up.attachments && up.attachments[0];
-                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`);
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
               }
               description.rte.resolvePendingImages(idToUrl);
             }
@@ -294,6 +294,62 @@ export async function renderDetail(main, { params, navigate }) {
         }
       };
       openModal({ title: '조치 완료', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '조치 완료', variant: 'btn-primary', onClick: submit }] });
+    }
+    /** 조치완료(확인대기/완료) 후 조치 결과 내용만 고친다. 상태 전이는 없다(openResolve와 달리 revision만 증가). */
+    function openEditResolution() {
+      const pendingImages = new Map();
+      const description = createRichTextEditor({
+        initialHtml: toDisplayHtml((r && r.description) || ''),
+        placeholder: '예) 로그인 Token 검증 로직 오류를 수정했습니다. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.',
+        onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
+      });
+      const changeReference = op.enableChangeReference ? h('input', { class: 'input', value: (r && r.changeReference) || '', placeholder: 'Commit / Revision / Change ID' }) : null;
+      const targetVersion = h('input', { class: 'input', value: (r && r.targetVersion) || '', placeholder: '예) Release 1.2.3' });
+      const field = (label, input, required, help) => h('div', { class: 'field' }, h('label', {}, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null);
+      const errBox = h('div', { class: 'form-error hidden' });
+      const body = h(
+        'div',
+        {},
+        errBox,
+        field('처리 결과', description, true, '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.'),
+        changeReference ? field('Change Reference', changeReference, false, `Commit message 권장: [${issue.id}] 수정 내용`) : null,
+        field('반영 예정 버전', targetVersion, false)
+      );
+      const submit = async (close) => {
+        errBox.classList.add('hidden');
+        if (description.rte.isEmpty()) {
+          errBox.textContent = '처리 결과를 입력해주세요.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+        try {
+          await run(async (rev) => {
+            let curRev = rev;
+            if (pendingImages.size) {
+              const idToUrl = new Map();
+              for (const [pendingId, { file }] of pendingImages) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+                const up = await api.issues.upload(issue.id, fd);
+                curRev = up.revision;
+                const att = up.attachments && up.attachments[0];
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
+              }
+              description.rte.resolvePendingImages(idToUrl);
+            }
+            const resolution = { description: description.rte.getValue(), targetVersion: targetVersion.value.trim() };
+            if (changeReference) resolution.changeReference = changeReference.value.trim();
+            return api.issues.action(issue.id, 'edit-resolution', { expectedRevision: curRev, resolution });
+          }, '조치 결과가 수정되었습니다.');
+          close();
+        } catch (err) {
+          if (!err.isConflict) {
+            errBox.textContent = errorMessage(err);
+            errBox.classList.remove('hidden');
+          }
+        }
+      };
+      openModal({ title: '조치 결과 수정', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '저장', variant: 'btn-primary', onClick: submit }] });
     }
     function openDeploy() {
       formModal({
@@ -529,7 +585,7 @@ export async function renderDetail(main, { params, navigate }) {
                 const up = await api.issues.upload(issue.id, fd);
                 curRev = up.revision;
                 const att = up.attachments && up.attachments[0];
-                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}`);
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
               }
               symptom.rte.resolvePendingImages(idToUrl);
               expected.rte.resolvePendingImages(idToUrl);
@@ -574,11 +630,15 @@ export async function renderDetail(main, { params, navigate }) {
       wrap.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
       return wrap;
     }
+    const PAGE_SIZE = 5;
+    let expanded = false;
     const list = h('div', { class: 'att-table' });
-    for (const a of atts) {
+    const moreWrap = h('div', {});
+
+    function row(a) {
       const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
       const isImg = /^image\//.test(a.mimeType);
-      const row = h(
+      return h(
         'div',
         { class: 'att-row' },
         h('a', { class: 'att-name', href: url, title: a.originalName }, icon('paperclip', { size: 13 }), a.originalName),
@@ -592,9 +652,16 @@ export async function renderDetail(main, { params, navigate }) {
           h('a', { class: 'btn btn-ghost btn-xs', href: url, target: '_blank', rel: 'noopener' }, '다운로드')
         )
       );
-      list.append(row);
     }
-    wrap.append(list);
+    function rerender() {
+      clear(list);
+      const shown = expanded ? atts : atts.slice(0, PAGE_SIZE);
+      for (const a of shown) list.append(row(a));
+      clear(moreWrap);
+      if (!expanded && atts.length > PAGE_SIZE) moreWrap.append(h('button', { class: 'btn btn-ghost btn-sm mt-8', onClick: () => { expanded = true; rerender(); } }, `전체 보기 (${atts.length})`));
+    }
+    rerender();
+    wrap.append(list, moreWrap);
     if (p.canAttach) wrap.append(h('div', { class: 'small muted mt-8' }, '파일 추가/삭제는 "등록내용 수정"에서 할 수 있습니다.'));
     return wrap;
   }
@@ -610,47 +677,52 @@ export async function renderDetail(main, { params, navigate }) {
     const op = store.operation || {};
     const dzErr = h('div', { class: 'dz-error hidden' });
     const listEl = h('div', { class: 'att-table' });
+    const moreWrap = h('div', {});
+    const PAGE_SIZE = 5;
+    let expanded = false;
 
+    function attRow(a) {
+      const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
+      const isImg = /^image\//.test(a.mimeType);
+      return h(
+        'div',
+        { class: 'att-row' },
+        h('a', { class: 'att-name', href: url, title: a.originalName, target: '_blank', rel: 'noopener' }, icon('paperclip', { size: 13 }), a.originalName),
+        h('span', { class: 'att-meta' }, fmtBytes(a.size)),
+        h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
+        h(
+          'span',
+          { class: 'att-actions' },
+          isImg ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
+          h('button', {
+            type: 'button',
+            class: 'btn btn-ghost btn-xs',
+            onClick: async () => {
+              if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
+              try {
+                const res = await api.issues.deleteAttachment(issue.id, a.attachmentId, issue.revision);
+                issue.revision = res.revision;
+                // deleteAttachment 응답에는 attachments 전체 목록이 없으므로 재조회해서 동기화한다.
+                const fresh = await api.issues.get(issue.id);
+                issue.attachments = fresh.issue.attachments;
+                renderList();
+                if (onChange) onChange();
+              } catch (err) {
+                toast(errorMessage(err), 'error');
+              }
+            },
+          }, '삭제')
+        )
+      );
+    }
     function renderList() {
       clear(listEl);
       const atts = (issue.attachments || []).filter((a) => !a.deleted);
-      for (const a of atts) {
-        const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
-        const isImg = /^image\//.test(a.mimeType);
-        listEl.append(
-          h(
-            'div',
-            { class: 'att-row' },
-            h('a', { class: 'att-name', href: url, title: a.originalName, target: '_blank', rel: 'noopener' }, icon('paperclip', { size: 13 }), a.originalName),
-            h('span', { class: 'att-meta' }, fmtBytes(a.size)),
-            h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
-            h(
-              'span',
-              { class: 'att-actions' },
-              isImg ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
-              h('button', {
-                type: 'button',
-                class: 'btn btn-ghost btn-xs',
-                onClick: async () => {
-                  if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
-                  try {
-                    const res = await api.issues.deleteAttachment(issue.id, a.attachmentId, issue.revision);
-                    issue.revision = res.revision;
-                    // deleteAttachment 응답에는 attachments 전체 목록이 없으므로 재조회해서 동기화한다.
-                    const fresh = await api.issues.get(issue.id);
-                    issue.attachments = fresh.issue.attachments;
-                    renderList();
-                    if (onChange) onChange();
-                  } catch (err) {
-                    toast(errorMessage(err), 'error');
-                  }
-                },
-              }, '삭제')
-            )
-          )
-        );
-      }
+      const shown = expanded ? atts : atts.slice(0, PAGE_SIZE);
+      for (const a of shown) listEl.append(attRow(a));
       if (!atts.length) listEl.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
+      clear(moreWrap);
+      if (!expanded && atts.length > PAGE_SIZE) moreWrap.append(h('button', { type: 'button', class: 'btn btn-ghost btn-sm mt-8', onClick: () => { expanded = true; renderList(); } }, `전체 보기 (${atts.length})`));
     }
     renderList();
 
@@ -666,6 +738,7 @@ export async function renderDetail(main, { params, navigate }) {
         // upload 응답의 attachments는 "이번에 추가된" 항목만이라 전체 목록이 아니다. 재조회해서 동기화한다.
         const fresh = await api.issues.get(issue.id);
         issue.attachments = fresh.issue.attachments;
+        expanded = true; // 새로 올린 파일이 "더보기" 뒤에 숨어 안 보이는 일이 없도록 펼친 상태로 전환
         if (res.rejected && res.rejected.length) {
           const msg = `업로드 실패: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`;
           dzErr.textContent = msg;
@@ -689,7 +762,7 @@ export async function renderDetail(main, { params, navigate }) {
       h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
       h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
     );
-    wrap.append(drop, input, dzErr, listEl);
+    wrap.append(drop, input, dzErr, listEl, moreWrap);
     return wrap;
   }
 

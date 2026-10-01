@@ -70,7 +70,7 @@ async function uploadPendingImages(issueId, pendingImages, startRevision) {
     const res = await api.issues.upload(issueId, fd);
     revision = res.revision;
     const att = res.attachments && res.attachments[0];
-    if (att) idToUrl.set(pendingId, `/api/issues/${issueId}/attachments/${att.attachmentId}`);
+    if (att) idToUrl.set(pendingId, `/api/issues/${issueId}/attachments/${att.attachmentId}?inline=1`);
   }
   return { idToUrl, revision };
 }

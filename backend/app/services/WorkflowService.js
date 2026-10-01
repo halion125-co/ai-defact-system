@@ -143,6 +143,31 @@ class WorkflowService {
     return this._result(issue);
   }
 
+  /** 조치완료(확인대기/완료) 후 조치 결과 내용만 수정한다. 상태 전이는 없다. */
+  async editResolution(user, issueId, body) {
+    V.requireObject(body);
+    const rev = V.expectedRevision(body);
+    const operation = this.configService.getOperation();
+    const resolution = V.resolution(body, operation);
+    const { issue } = await this.issueService.mutate(issueId, user, rev, async (iss, ctx) => {
+      if (!P.canEditResolution(user, iss)) throw errors.forbidden('조치자 또는 Quality Admin만 조치 결과를 수정할 수 있습니다.');
+      if (!iss.resolution) throw errors.invalidTransition(iss.status, iss.status, '조치 완료 이력이 없는 Issue입니다.');
+      const before = { description: iss.resolution.description, changeReference: iss.resolution.changeReference, targetVersion: iss.resolution.targetVersion };
+      iss.resolution = {
+        ...iss.resolution,
+        description: resolution.description,
+        changeReference: resolution.changeReference || null,
+        targetVersion: resolution.targetVersion || null,
+      };
+      ctx.event(EVENT.RESOLUTION_EDITED, {
+        before,
+        after: { description: iss.resolution.description, changeReference: iss.resolution.changeReference, targetVersion: iss.resolution.targetVersion },
+        comment: richTextToPlainText(resolution.description),
+      });
+    });
+    return this._result(issue);
+  }
+
   async reopen(user, issueId, body) {
     V.requireObject(body);
     const rev = V.expectedRevision(body);
