@@ -238,8 +238,9 @@ function contentChanges(type, changes, activeEnvironments) {
   return out;
 }
 
+/** 사유류 필드. 화면 캡처를 붙여넣을 수 있도록 richText로 검증한다(1줄 input에서 쓰는 호출부는 애초에 <img>를 만들 수 없어 영향 없음). */
 function reason(body, label = '사유', required = true) {
-  return text(body.reason, { field: 'reason', label, required, min: required ? 2 : 0, max: 1000, multiline: true });
+  return richText(body.reason, { field: 'reason', label, required, min: required ? 2 : 0, max: 1000 });
 }
 
 function resolution(body, operation) {
@@ -256,7 +257,7 @@ function resolution(body, operation) {
 function comment(body) {
   requireObject(body);
   return {
-    body: text(body.body, { field: 'body', label: 'Comment', min: 1, max: 5000, multiline: true }),
+    body: richText(body.body, { field: 'body', label: 'Comment', min: 1, max: 5000 }),
     attachmentIds: Array.isArray(body.attachmentIds) ? body.attachmentIds.map(String).slice(0, 20) : [],
   };
 }
@@ -349,9 +350,8 @@ function operationUpdate(body) {
   if (body.announcement !== undefined) {
     const a = body.announcement || {};
     const title = String(a.title || '').trim().slice(0, 100);
-    const message = String(a.message || '').trim().slice(0, 2000);
     const enabled = !!a.enabled;
-    if (enabled && !message) throw fail('공지사항 내용을 입력해주세요.', 'announcement');
+    const message = richText(a.message, { field: 'announcement', label: '공지사항 내용', required: enabled, max: 2000 });
     out.announcement = { enabled, title, message };
   }
   if (body.backup !== undefined) {

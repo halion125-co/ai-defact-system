@@ -193,7 +193,7 @@ class WorkflowService {
     V.requireObject(body);
     const rev = V.expectedRevision(body);
     const closeType = V.closeType(body.closeType);
-    const comment = V.text(body.comment, { field: 'comment', label: closeType === 'AGREED' ? '확인/합의 내용' : 'Comment', required: closeType === 'AGREED', min: closeType === 'AGREED' ? 5 : 0, max: 2000, multiline: true });
+    const comment = V.richText(body.comment, { field: 'comment', label: closeType === 'AGREED' ? '확인/합의 내용' : 'Comment', required: closeType === 'AGREED', min: closeType === 'AGREED' ? 5 : 0, max: 2000 });
     const { issue } = await this.issueService.mutate(issueId, user, rev, async (iss, ctx) => {
       if (closeType === 'VERIFIED' && !P.canCloseVerified(user, iss)) {
         if (iss.status !== STATUS.DONE) throw errors.invalidTransition(iss.status, STATUS.CLOSED);

@@ -3,7 +3,7 @@
  */
 import { api } from '../api.js';
 import { store } from '../store.js';
-import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, formModal, openModal, toast, errorMessage } from '../ui.js';
+import { h, clear, pageHead, statusBadge, priorityBadge, typeBadge, fmtDate, fmtDateTime, errorBox, loadingState, emptyState, openModal, toast, errorMessage } from '../ui.js';
 import { openIssuePreview } from '../issuePreview.js';
 import { createRichTextEditor } from '../richText.js';
 
@@ -76,32 +76,82 @@ function doResolve(it, reload) {
   };
   openModal({ title: '조치 완료', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '조치 완료', variant: 'btn-primary', onClick: submit }] });
 }
+/** doResolve와 동일한 패턴: 사유/코멘트 1개(리치텍스트, 이미지 붙여넣기 가능)로 구성된 액션 모달. */
+function openRichReasonModal(it, reload, { title, description, fieldLabel, placeholder, required, submitLabel, submitVariant, successMsg, action, extraPayload }) {
+  const pendingImages = new Map();
+  const richField = createRichTextEditor({ placeholder, onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
+  const errBox = h('div', { class: 'form-error hidden' });
+  const body = h(
+    'div',
+    {},
+    h('p', { class: 'muted', style: { marginTop: 0 } }, description),
+    errBox,
+    h('div', { class: 'field' }, h('label', {}, fieldLabel, required ? h('span', { class: 'req' }, '*') : null), richField, h('div', { class: 'help' }, '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.'))
+  );
+  const submit = async (close) => {
+    errBox.classList.add('hidden');
+    if (required && richField.rte.isEmpty()) {
+      errBox.textContent = `${fieldLabel}을 입력해주세요.`;
+      errBox.classList.remove('hidden');
+      return;
+    }
+    try {
+      let curRev = it.revision;
+      if (pendingImages.size) {
+        const idToUrl = new Map();
+        for (const [pendingId, { file }] of pendingImages) {
+          const fd = new FormData();
+          fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+          const up = await api.issues.upload(it.id, fd);
+          curRev = up.revision;
+          const att = up.attachments && up.attachments[0];
+          if (att) idToUrl.set(pendingId, `/api/issues/${it.id}/attachments/${att.attachmentId}?inline=1`);
+        }
+        richField.rte.resolvePendingImages(idToUrl);
+      }
+      await api.issues.action(it.id, action, { expectedRevision: curRev, ...extraPayload(richField.rte.getValue()) });
+      toast(`${it.id} ${successMsg}`, 'success');
+      close();
+      reload();
+    } catch (err) {
+      if (err.isConflict) {
+        toast('다른 사용자가 먼저 변경했습니다. 목록을 새로고침합니다.', 'error');
+        close();
+        reload();
+      } else {
+        errBox.textContent = errorMessage(err);
+        errBox.classList.remove('hidden');
+      }
+    }
+  };
+  openModal({ title, wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
+}
 function doCloseVerified(it, reload) {
-  formModal({
+  openRichReasonModal(it, reload, {
     title: '정상 확인',
     description: `${it.id} · 재검증 결과 정상 동작을 확인했습니다.`,
-    fields: [{ name: 'comment', label: '확인 내용 (선택)', type: 'textarea', placeholder: '예) 검증계에서 정상 동작 확인' }],
+    fieldLabel: '확인 내용 (선택)',
+    placeholder: '예) 검증계에서 정상 동작 확인',
+    required: false,
     submitLabel: '정상 확인',
     submitVariant: 'btn-success',
-    onSubmit: async (v) => {
-      await api.issues.action(it.id, 'close', { expectedRevision: it.revision, closeType: 'VERIFIED', comment: v.comment });
-      toast(`${it.id} Close 되었습니다. (정상 확인)`, 'success');
-      reload();
-    },
+    successMsg: 'Close 되었습니다. (정상 확인)',
+    action: 'close',
+    extraPayload: (value) => ({ closeType: 'VERIFIED', comment: value }),
   });
 }
 function doReopen(it, reload) {
-  formModal({
+  openRichReasonModal(it, reload, {
     title: '재조치 요청',
     description: `${it.id} · 사유를 남기면 조치중 상태로 돌아가 조치자가 재조치합니다.`,
-    fields: [{ name: 'reason', label: '재조치 사유', type: 'textarea', required: true, placeholder: '예) 검증계에서 동일 현상이 계속 발생합니다.' }],
+    fieldLabel: '재조치 사유',
+    placeholder: '예) 검증계에서 동일 현상이 계속 발생합니다.',
+    required: true,
     submitLabel: '재조치 요청',
     submitVariant: 'btn-warning',
-    onSubmit: async (v) => {
-      await api.issues.action(it.id, 'reopen', { expectedRevision: it.revision, reason: v.reason });
-      toast(`${it.id} 재조치 요청되었습니다.`, 'success');
-      reload();
-    },
+    successMsg: '재조치 요청되었습니다.',
+    action: 'reopen',
+    extraPayload: (value) => ({ reason: value }),
   });
 }
 

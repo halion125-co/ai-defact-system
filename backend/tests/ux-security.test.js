@@ -91,7 +91,8 @@ test('로그/스택트레이스 붙여넣기(2000자 초과)는 필드 단위 �
   assert.equal(tooLong.body.error.details.field, 'body');
   const c = await rep.post(`/api/issues/${ok.body.id}/comments`, { expectedRevision: 1, body: big.slice(0, 4900) });
   assert.equal(c.status, 201);
-  assert.ok(c.body.comment.body.split('\n').length > 60);
+  // Comment도 richText로 저장되어 줄바꿈은 <br>로 치환된다(이미지 붙여넣기 지원을 위한 전환).
+  assert.ok(c.body.comment.body.split('<br>').length > 60);
 });
 
 test('재현절차: 번호 붙은 여러 줄을 배열로 보냈을 때 순서/내용 보존, 각 단계 개행은 공백', async (t) => {

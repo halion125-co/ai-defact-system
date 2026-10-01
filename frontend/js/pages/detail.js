@@ -209,7 +209,7 @@ export async function renderDetail(main, { params, navigate }) {
           traceRow('최초 조치완료', r && r.firstResolvedAt ? fmtDateTime(r.firstResolvedAt) : null),
           traceRow('최근 조치완료', r && r.resolvedAt ? fmtDateTime(r.resolvedAt) : null),
           op.enableDeployment ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, '배포'), h('div', { class: 'v' }, deployBadge(d.status || 'NOT_DEPLOYED'), d.status === 'DEPLOYED' ? h('span', { style: { marginLeft: '8px' } }, `${d.environmentNameSnapshot || ''} ${d.version || ''} · ${fmtDateTime(d.deployedAt)}`) : null)) : null,
-          issue.close && issue.close.type ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, `Close (${CLOSE_LABEL[issue.close.type] || issue.close.type})`), h('div', { class: 'v pre' }, issue.close.comment || '-'), h('div', { class: 'small muted' }, `최초 ${fmtDateTime(issue.close.firstClosedAt)} · 최근 ${fmtDateTime(issue.close.closedAt)}`)) : null
+          issue.close && issue.close.type ? h('div', { style: { gridColumn: '1 / -1', borderTop: '1px solid var(--border)', paddingTop: '10px' } }, h('div', { class: 'k' }, `Close (${CLOSE_LABEL[issue.close.type] || issue.close.type})`), issue.close.comment ? richBody(issue.close.comment, 'v pre') : h('div', { class: 'v pre empty' }, '-'), h('div', { class: 'small muted' }, `최초 ${fmtDateTime(issue.close.firstClosedAt)} · 최근 ${fmtDateTime(issue.close.closedAt)}`)) : null
         )
       : h('div', { class: 'trace-empty' }, '아직 연결된 추적 정보가 없습니다.');
 
@@ -240,6 +240,63 @@ export async function renderDetail(main, { params, navigate }) {
       } catch (err) {
         if (!err.isConflict) toast(errorMessage(err), 'error');
       }
+    }
+    /**
+     * 사유/코멘트 1개(리치텍스트, 이미지 붙여넣기 가능) + 선택적 보조 필드(select 등)로 구성된 액션 모달 공통 헬퍼.
+     * extraField가 있으면 리치텍스트 필드보다 먼저 렌더링된다(예: 관리자 강제 변경의 "변경할 상태").
+     */
+    function openRichReasonModal({ title, description, fieldLabel, placeholder = '', required = true, submitLabel, submitVariant = 'btn-primary', successMsg, extraField, onSubmit }) {
+      const pendingImages = new Map();
+      const richField = createRichTextEditor({ placeholder, onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
+      const field = (label, input, req, help) => h('div', { class: 'field' }, h('label', {}, label, req ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null);
+      const errBox = h('div', { class: 'form-error hidden' });
+      const body = h(
+        'div',
+        {},
+        errBox,
+        description ? h('p', { class: 'desc' }, description) : null,
+        extraField ? field(extraField.label, extraField.input, extraField.required) : null,
+        field(fieldLabel, richField, required)
+      );
+      const submit = async (close) => {
+        errBox.classList.add('hidden');
+        if (required && richField.rte.isEmpty()) {
+          errBox.textContent = `${josa(fieldLabel, '을/를')} 입력해주세요.`;
+          errBox.classList.remove('hidden');
+          return;
+        }
+        if (extraField && extraField.required && !extraField.input.value) {
+          errBox.textContent = `${josa(extraField.label, '을/를')} 선택해주세요.`;
+          errBox.classList.remove('hidden');
+          return;
+        }
+        try {
+          await run(async (rev) => {
+            let curRev = rev;
+            if (pendingImages.size) {
+              const idToUrl = new Map();
+              for (const [pendingId, { file }] of pendingImages) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+                const up = await api.issues.upload(issue.id, fd);
+                curRev = up.revision;
+                const att = up.attachments && up.attachments[0];
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
+              }
+              richField.rte.resolvePendingImages(idToUrl);
+            }
+            const value = richField.rte.getValue();
+            return onSubmit(curRev, value, extraField ? extraField.input.value : undefined);
+          }, successMsg);
+          close();
+        } catch (err) {
+          if (!err.isConflict) {
+            errBox.textContent = errorMessage(err);
+            errBox.classList.remove('hidden');
+          }
+        }
+      };
+      openModal({ title, wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
     }
     function openResolve() {
       const pendingImages = new Map(); // pendingId -> { file }. issue가 이미 있으므로 저장 시 바로 업로드 가능.
@@ -365,43 +422,55 @@ export async function renderDetail(main, { params, navigate }) {
       });
     }
     function openReopen() {
-      formModal({
+      openRichReasonModal({
         title: issue.status === 'CLOSED' ? 'Re-open' : '재조치 요청',
         description: '사유를 남기면 조치중 상태로 돌아가 조치자가 재조치합니다.',
-        fields: [{ name: 'reason', label: '재조치 사유', type: 'textarea', required: true, placeholder: '예) 검증계에서 동일 현상이 계속 발생합니다.' }],
+        fieldLabel: '재조치 사유',
+        placeholder: '예) 검증계에서 동일 현상이 계속 발생합니다.',
+        required: true,
         submitLabel: '재조치 요청',
         submitVariant: 'btn-warning',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'reopen', { expectedRevision: rev, reason: v.reason }), '재조치 요청되었습니다. (→ 조치중)'),
+        successMsg: '재조치 요청되었습니다. (→ 조치중)',
+        onSubmit: (rev, value) => api.issues.action(issue.id, 'reopen', { expectedRevision: rev, reason: value }),
       });
     }
     function openCloseVerified() {
-      formModal({
+      openRichReasonModal({
         title: '정상 확인',
         description: '재검증 결과 정상 동작을 확인했습니다.',
-        fields: [{ name: 'comment', label: '확인 내용 (선택)', type: 'textarea', placeholder: '예) 검증계에서 정상 동작 확인' }],
+        fieldLabel: '확인 내용 (선택)',
+        placeholder: '예) 검증계에서 정상 동작 확인',
+        required: false,
         submitLabel: '정상 확인',
         submitVariant: 'btn-success',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'VERIFIED', comment: v.comment }), 'Close 되었습니다. (정상 확인)'),
+        successMsg: 'Close 되었습니다. (정상 확인)',
+        onSubmit: (rev, value) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'VERIFIED', comment: value }),
       });
     }
     function openCloseAgreed() {
-      formModal({
+      openRichReasonModal({
         title: '결함을 종료하시겠습니까?',
-        description: '가능하면 고객/등록자가 직접 확인 후 종료하는 것을 권장합니다.\n조치자가 종료하는 경우 확인/합의 내용을 남겨주세요.',
-        fields: [{ name: 'comment', label: '확인/합의 내용', type: 'textarea', required: true, placeholder: '예) 김OO 책임과 검증계 정상동작을 확인하였으며 해당 결함을 종료하기로 협의함.', rows: 4 }],
+        description: '가능하면 고객/등록자가 직접 확인 후 종료하는 것을 권장합니다. 조치자가 종료하는 경우 확인/합의 내용을 남겨주세요.',
+        fieldLabel: '확인/합의 내용',
+        placeholder: '예) 김OO 책임과 검증계 정상동작을 확인하였으며 해당 결함을 종료하기로 협의함.',
+        required: true,
         submitLabel: 'Close',
         submitVariant: 'btn-success',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'AGREED', comment: v.comment }), 'Close 되었습니다. (합의 종료)'),
+        successMsg: 'Close 되었습니다. (합의 종료)',
+        onSubmit: (rev, value) => api.issues.action(issue.id, 'close', { expectedRevision: rev, closeType: 'AGREED', comment: value }),
       });
     }
     function openCancel() {
-      formModal({
+      openRichReasonModal({
         title: 'Issue 취소',
         description: '취소된 Issue는 통계에서 제외되며 Kanban 기본 화면에 표시되지 않습니다. 이력은 보존됩니다.',
-        fields: [{ name: 'reason', label: '취소 사유', type: 'textarea', required: true, placeholder: '예) 중복 결함 DEF-0019로 관리' }],
+        fieldLabel: '취소 사유',
+        placeholder: '예) 중복 결함 DEF-0019로 관리',
+        required: true,
         submitLabel: '취소',
         submitVariant: 'btn-danger',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: v.reason }), '취소 처리되었습니다.'),
+        successMsg: '취소 처리되었습니다.',
+        onSubmit: (rev, value) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: value }),
       });
     }
     async function openDeleteIssue() {
@@ -421,16 +490,18 @@ export async function renderDetail(main, { params, navigate }) {
       }
     }
     function openAdminOverride() {
-      formModal({
+      const statusSelect = h('select', { class: 'input' }, ...Object.entries(STATUS_LABEL).filter(([c]) => c !== issue.status).map(([value, label]) => h('option', { value }, `${STATUS_KO[value]} · ${label}`)));
+      openRichReasonModal({
         title: '관리자 상태 강제 변경',
         description: 'Quality Admin 전용. 일반 Workflow와 별도로 이력이 남습니다. 사유는 필수입니다.',
-        fields: [
-          { name: 'status', label: '변경할 상태', type: 'select', required: true, options: Object.entries(STATUS_LABEL).filter(([c]) => c !== issue.status).map(([value, label]) => ({ value, label: `${STATUS_KO[value]} · ${label}` })) },
-          { name: 'reason', label: '변경 사유', type: 'textarea', required: true, placeholder: '예) 고객 재검증 결과 동일 현상 발생' },
-        ],
+        extraField: { label: '변경할 상태', input: statusSelect, required: true },
+        fieldLabel: '변경 사유',
+        placeholder: '예) 고객 재검증 결과 동일 현상 발생',
+        required: true,
         submitLabel: '강제 변경',
         submitVariant: 'btn-danger',
-        onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'admin-status', { expectedRevision: rev, status: v.status, reason: v.reason }), '상태가 강제 변경되었습니다.'),
+        successMsg: '상태가 강제 변경되었습니다.',
+        onSubmit: (rev, value, status) => api.issues.action(issue.id, 'admin-status', { expectedRevision: rev, status, reason: value }),
       });
     }
     async function openAssign() {
@@ -829,11 +900,20 @@ export async function renderDetail(main, { params, navigate }) {
     return items.reverse(); // 최신순
   }
 
+  /** Comment/활동 이력의 reason·comment는 richText(이미지 포함)로 저장되므로 textContent가 아니라 sanitize된 HTML로 렌더링한다. */
+  function richActivityText(raw, cls) {
+    const el = renderIssueBodyText(raw, 'div', cls);
+    bindBodyImagePreview(el);
+    return el;
+  }
+
   function activityItemEl(issue, p, it) {
     const attMap = new Map((issue.attachments || []).map((a) => [a.attachmentId, a]));
     if (it.kind === 'comment') {
       const c = it.c;
-      const body = c.hidden ? h('div', { class: 'tl-comment hidden-c' }, p.isAdmin ? `[숨김 처리됨 · ${c.hiddenReason || ''}] ${c.body || ''}` : '관리자에 의해 숨김 처리된 Comment입니다.') : h('div', { class: 'tl-comment' }, c.body);
+      const body = c.hidden
+        ? h('div', { class: 'tl-comment hidden-c' }, p.isAdmin ? [`[숨김 처리됨 · ${c.hiddenReason || ''}] `, richActivityText(c.body || '')] : '관리자에 의해 숨김 처리된 Comment입니다.')
+        : richActivityText(c.body, 'tl-comment');
       const atts = (c.attachments || []).map((id) => attMap.get(id)).filter(Boolean);
       return h(
         'div',
@@ -871,7 +951,7 @@ export async function renderDetail(main, { params, navigate }) {
     if (t === 'RESOLVED' && ev.data && (ev.data.changeReference || ev.data.targetVersion)) rows.push(h('div', { class: 'tl-change' }, ev.data.changeReference ? h('span', { class: 'mono' }, `Change ${ev.data.changeReference}`) : null, ev.data.targetVersion ? ` · ${ev.data.targetVersion}` : null));
     if (t === 'ATTACHMENT_ADDED' && ev.data) rows.push(h('div', { class: 'tl-change' }, (ev.data.files || []).map((f) => f.name).join(', ')));
     if (t === 'ATTACHMENT_DELETED' && ev.data) rows.push(h('div', { class: 'tl-change' }, ev.data.name));
-    if (ev.comment) rows.push(h('div', { class: ['REOPENED', 'CANCELLED', 'ADMIN_STATUS_OVERRIDE', 'COMMENT_HIDDEN'].includes(t) ? 'tl-reason' : 'tl-comment' }, ev.comment));
+    if (ev.comment) rows.push(richActivityText(ev.comment, ['REOPENED', 'CANCELLED', 'ADMIN_STATUS_OVERRIDE', 'COMMENT_HIDDEN'].includes(t) ? 'tl-reason' : 'tl-comment'));
     return h(
       'div',
       { class: 'tl-item' },
@@ -917,48 +997,98 @@ export async function renderDetail(main, { params, navigate }) {
   }
 
   function hideComment(c) {
-    formModal({
-      title: 'Comment 숨김',
-      description: '화면에서 숨김 처리됩니다. 원문은 파일/Audit에 보존됩니다.',
-      fields: [{ name: 'reason', label: '숨김 사유', type: 'textarea', required: true, placeholder: '예) 오등록된 개인정보 포함' }],
-      submitLabel: '숨김',
-      submitVariant: 'btn-danger',
-      onSubmit: (v) => run((rev) => api.issues.hideComment(issueId, c.commentId, { expectedRevision: rev, reason: v.reason }), 'Comment가 숨김 처리되었습니다.'),
-    });
+    const pendingImages = new Map();
+    const reasonField = createRichTextEditor({ placeholder: '예) 오등록된 개인정보 포함', onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
+    const errBox = h('div', { class: 'form-error hidden' });
+    const body = h(
+      'div',
+      {},
+      h('p', { class: 'desc' }, '화면에서 숨김 처리됩니다. 원문은 파일/Audit에 보존됩니다.'),
+      errBox,
+      h('div', { class: 'field' }, h('label', {}, '숨김 사유', h('span', { class: 'req' }, '*')), reasonField)
+    );
+    const submit = async (close) => {
+      errBox.classList.add('hidden');
+      if (reasonField.rte.isEmpty()) {
+        errBox.textContent = '숨김 사유를 입력해주세요.';
+        errBox.classList.remove('hidden');
+        return;
+      }
+      try {
+        await run(async (rev) => {
+          let curRev = rev;
+          if (pendingImages.size) {
+            const idToUrl = new Map();
+            for (const [pendingId, { file }] of pendingImages) {
+              const fd = new FormData();
+              fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+              const up = await api.issues.upload(issueId, fd);
+              curRev = up.revision;
+              const att = up.attachments && up.attachments[0];
+              if (att) idToUrl.set(pendingId, `/api/issues/${issueId}/attachments/${att.attachmentId}?inline=1`);
+            }
+            reasonField.rte.resolvePendingImages(idToUrl);
+          }
+          return api.issues.hideComment(issueId, c.commentId, { expectedRevision: curRev, reason: reasonField.rte.getValue() });
+        }, 'Comment가 숨김 처리되었습니다.');
+        close();
+      } catch (err) {
+        if (!err.isConflict) {
+          errBox.textContent = errorMessage(err);
+          errBox.classList.remove('hidden');
+        }
+      }
+    };
+    openModal({ title: 'Comment 숨김', wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '숨김', variant: 'btn-danger', onClick: submit }] });
   }
 
   function buildComposer(issue, p) {
     if (!p.canComment) return h('div', { class: 'muted small mb-16' }, '등록자, 조치자, Quality Admin만 Comment를 작성할 수 있습니다.');
-    const ta = h('textarea', { class: 'input', placeholder: '추가로 확인한 내용이나 조치에 필요한 정보를 남겨주세요.', 'aria-label': 'Comment' });
+    const pendingImages = new Map();
+    const ta = createRichTextEditor({ placeholder: '추가로 확인한 내용이나 조치에 필요한 정보를 남겨주세요. 화면 캡처는 Ctrl+V로 바로 붙여넣을 수 있습니다.', onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
     const fileInput = h('input', { type: 'file', multiple: true, class: 'hidden' });
     const fileNames = h('span', { class: 'small muted' });
     fileInput.addEventListener('change', () => (fileNames.textContent = [...fileInput.files].map((f) => f.name).join(', ')));
     const btn = h('button', { class: 'btn btn-primary' }, '등록');
     const err = h('div', { class: 'error-msg hidden' });
     btn.addEventListener('click', async () => {
-      const body = ta.value.trim();
       err.classList.add('hidden');
-      if (!body) {
+      if (ta.rte.isEmpty()) {
         err.textContent = 'Comment 내용을 입력해주세요.';
         err.classList.remove('hidden');
         return;
       }
       setBusy(btn, true, '등록');
+      const savedHtml = ta.rte.getValue();
       try {
+        let curRev = data.issue.revision;
         let attachmentIds = [];
         if (fileInput.files.length) {
           const fd = new FormData();
           for (const f of fileInput.files) fd.append('file', f, f.name);
-          fd.append('expectedRevision', String(data.issue.revision));
+          fd.append('expectedRevision', String(curRev));
           const up = await api.issues.upload(issue.id, fd);
           attachmentIds = up.attachments.map((a) => a.attachmentId);
-          data.issue.revision = up.revision;
+          curRev = up.revision;
         }
-        await run((rev) => api.issues.comment(issue.id, { expectedRevision: rev, body, attachmentIds }), 'Comment가 등록되었습니다.');
+        if (pendingImages.size) {
+          const idToUrl = new Map();
+          for (const [pendingId, { file }] of pendingImages) {
+            const fd = new FormData();
+            fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+            const up = await api.issues.upload(issue.id, fd);
+            curRev = up.revision;
+            const att = up.attachments && up.attachments[0];
+            if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
+          }
+          ta.rte.resolvePendingImages(idToUrl);
+        }
+        const body = ta.rte.getValue();
+        await run((rev) => api.issues.comment(issue.id, { expectedRevision: curRev, body, attachmentIds }), 'Comment가 등록되었습니다.');
       } catch (e) {
         err.textContent = e.isConflict ? '다른 사용자가 먼저 수정했습니다. 최신 내용을 불러온 후 다시 등록해주세요. (입력 내용 유지)' : errorMessage(e);
         err.classList.remove('hidden');
-        if (e.isConflict) setTimeout(() => { const t = root.querySelector('.composer textarea'); if (t) t.value = body; }, 0);
+        if (e.isConflict) setTimeout(() => ta.rte.setValue(savedHtml), 0);
       } finally {
         setBusy(btn, false, '등록');
       }
