@@ -27,12 +27,12 @@ function text(value, { field, label, required = true, min = 0, max = 2000, multi
   return v;
 }
 
-/** sanitizeRichText 결과에서 태그를 걷어낸 순수 텍스트 길이(min 길이 판단용. 이미지만 있고 텍스트가 없어도 이미지 1개를 최소 1자로 친다) */
+/** sanitizeRichText 결과에서 태그를 걷어낸 순수 텍스트 길이(min 길이 판단용) */
 function richTextPlainLength(sanitized) {
   const plain = String(sanitized || '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/?(b|strong)>/gi, '')
-    .replace(/<img\b[^>]*>/gi, '　') // 이미지 1개당 1자로 취급
+    .replace(/<img\b[^>]*>/gi, '')
     .trim();
   return plain.length;
 }
@@ -41,6 +41,8 @@ function richTextPlainLength(sanitized) {
  * "발생 현상" 등 제한적 리치 텍스트 필드 검증. sanitizeRichText로 허용 태그(b/strong/br/img)만 남기고
  * 나머지는 전부 무해화한다. min/max 길이는 태그를 걷어낸 순수 텍스트 기준으로 판단한다(HTML 마크업 길이에
  * 좌우되지 않도록). 최대 길이는 sanitize된 HTML 문자열 자체 기준(이미지 URL 등 포함)으로 별도 상한을 둔다.
+ * 이미지가 1개 이상 있으면 그 자체로 충분한 정보로 보고 min 길이 검증을 건너뛴다(화면 캡처만 붙여넣고
+ * 설명 텍스트를 안 쓴 경우도 유효한 등록으로 인정).
  */
 function richText(value, { field, label, required = true, min = 0, max = 4000, htmlMax = 20000 }) {
   if (value !== undefined && value !== null && typeof value !== 'string') {
@@ -51,8 +53,9 @@ function richText(value, { field, label, required = true, min = 0, max = 4000, h
     if (required) throw fail(`${josa(label, '을/를')} 입력해주세요.`, field);
     return '';
   }
+  const hasImage = /<img\b/i.test(sanitized);
   const plainLen = richTextPlainLength(sanitized);
-  if (plainLen < min) throw fail(`${josa(label, '은/는')} ${min}자 이상 입력해주세요.`, field);
+  if (!hasImage && plainLen < min) throw fail(`${josa(label, '은/는')} ${min}자 이상 입력해주세요.`, field);
   if (plainLen > max) throw fail(`${josa(label, '은/는')} ${max}자 이하로 입력해주세요.`, field);
   if (sanitized.length > htmlMax) throw fail(`${josa(label, '은/는')} 너무 깁니다.`, field);
   return sanitized;
