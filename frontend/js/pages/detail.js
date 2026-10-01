@@ -9,7 +9,7 @@ import {
   loadingState, formModal, confirmModal, openModal, copyText, setBusy, EVENT_LABEL, STATUS_LABEL, STATUS_KO, CLOSE_LABEL, localDateTimeValue, josa, icon,
 } from '../ui.js';
 import { getPrimaryAction, toActionIssue } from '../issueActions.js';
-import { renderIssueBodyText, createRichTextEditor, toDisplayHtml } from '../richText.js';
+import { renderIssueBodyText, createRichTextEditor, toDisplayHtml, richTextToPlainText } from '../richText.js';
 
 const FIELD_LABEL = {
   location: '발생 위치', environment: '발생 환경', symptom: '발생 현상', reproductionSteps: '재현 절차', expectedResult: '기대 결과',
@@ -94,7 +94,7 @@ export async function renderDetail(main, { params, navigate }) {
       let note = null;
 
       if (st === 'CANCEL') {
-        note = `취소된 Issue입니다.${issue.cancelReason ? ` 사유: ${issue.cancelReason}` : ''}`;
+        note = `취소된 Issue입니다.${issue.cancelReason ? ` 사유: ${richTextToPlainText(issue.cancelReason)}` : ''}`;
       } else if (st === 'CLOSED') {
         note = '종료된 Issue입니다.';
         if (p.canReopen) secondary.push({ label: 'Re-open', onClick: openReopen, variant: 'btn-warning' });
@@ -113,7 +113,7 @@ export async function renderDetail(main, { params, navigate }) {
         if (p.canReopen) secondary.push({ label: '재조치 요청', onClick: openReopen, variant: 'btn-secondary' });
         if (p.canCloseVerified && primary && primary.label !== '정상 확인') secondary.push({ label: '정상 확인', onClick: openCloseVerified, variant: 'btn-secondary' });
         if (p.canCloseAgreed && primary && !primary.label.includes('Close')) secondary.push({ label: p.isAdmin ? '합의 Close' : 'Close', onClick: openCloseAgreed, variant: 'btn-secondary' });
-        if (p.canCancel) secondary.push({ label: 'Cancel', onClick: openCancel, variant: 'btn-danger-outline' });
+        if (p.canCancel) secondary.push({ label: '취소', onClick: openCancel, variant: 'btn-danger-outline' });
 
         if (!primary && !secondary.length && !note) {
           note = issue.assignee ? '현재 수행 가능한 작업이 없습니다. 조치자 또는 Quality Admin이 진행합니다.' : '조치자가 지정되지 않았습니다. [내게 배정]으로 받거나 Quality Admin이 배정합니다.';
@@ -168,7 +168,7 @@ export async function renderDetail(main, { params, navigate }) {
         block('기대 결과', richBody(issue.expectedResult))
       );
     } else if (issue.type === 'IMPROVEMENT') {
-      contentBody.append(block('개선 대상', h('div', { class: 'body' }, issue.target)), block('개선 내용', richBody(issue.request)), issue.reason ? block('개선 필요 사유', h('div', { class: 'body' }, issue.reason)) : null);
+      contentBody.append(block('개선 대상', h('div', { class: 'body' }, issue.target)), block('개선 내용', richBody(issue.request)), issue.reason ? block('개선 필요 사유', richBody(issue.reason)) : null);
     } else {
       contentBody.append(block('문의 대상', h('div', { class: 'body' }, issue.target)), block('문의 내용', richBody(issue.question)));
     }
@@ -246,6 +246,8 @@ export async function renderDetail(main, { params, navigate }) {
      * extraField가 있으면 리치텍스트 필드보다 먼저 렌더링된다(예: 관리자 강제 변경의 "변경할 상태").
      */
     function openRichReasonModal({ title, description, fieldLabel, placeholder = '', required = true, submitLabel, submitVariant = 'btn-primary', successMsg, extraField, onSubmit }) {
+      // 제출 버튼 라벨이 "취소"(Issue 취소 등)와 같으면 모달 닫기 버튼과 동일한 단어가 되어 혼동되므로 "닫기"로 바꾼다.
+      const cancelLabel = submitLabel && submitLabel.startsWith('취소') ? '닫기' : '취소';
       const pendingImages = new Map();
       const richField = createRichTextEditor({ placeholder, onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
       const field = (label, input, req, help) => h('div', { class: 'field' }, h('label', {}, label, req ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null);
@@ -296,7 +298,7 @@ export async function renderDetail(main, { params, navigate }) {
           }
         }
       };
-      openModal({ title, wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
+      openModal({ title, wide: true, body, actions: [{ label: cancelLabel, variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
     }
     function openResolve() {
       const pendingImages = new Map(); // pendingId -> { file }. issue가 이미 있으므로 저장 시 바로 업로드 가능.
@@ -467,7 +469,7 @@ export async function renderDetail(main, { params, navigate }) {
         fieldLabel: '취소 사유',
         placeholder: '예) 중복 결함 DEF-0019로 관리',
         required: true,
-        submitLabel: '취소',
+        submitLabel: '취소하기',
         submitVariant: 'btn-danger',
         successMsg: '취소 처리되었습니다.',
         onSubmit: (rev, value) => api.issues.action(issue.id, 'cancel', { expectedRevision: rev, reason: value }),

@@ -77,6 +77,12 @@ export function barChart({ data, keys, onBarClick, height = 240 }) {
   el.append(grid, axis);
   const tip = tooltip(wrap);
   const labelEvery = Math.ceil(n / 14);
+  // 마지막 날짜는 항상 라벨을 찍되, 바로 앞 간격 라벨이 너무 가까우면(겹칠 정도면) 그 라벨은 생략한다.
+  const labelIdx = new Set();
+  for (let i = 0; i < n; i += labelEvery) labelIdx.add(i);
+  const lastIdx = n - 1;
+  if (labelIdx.has(lastIdx - 1) && lastIdx - 1 !== 0) labelIdx.delete(lastIdx - 1);
+  labelIdx.add(lastIdx);
   data.forEach((d, i) => {
     const gx = pad.l + slot * i + (slot - groupW) / 2;
     const hit = svg('rect', { class: 'hit', x: pad.l + slot * i, y: pad.t, width: slot, height: ih, rx: 4 });
@@ -102,7 +108,7 @@ export function barChart({ data, keys, onBarClick, height = 240 }) {
       el.append(bar);
       if (v > 0 && n <= 14) el.append(svg('text', { class: 'val', x: bx + barW / 2, y: by - 4, 'text-anchor': 'middle' }, v));
     });
-    if (i % labelEvery === 0 || i === n - 1) {
+    if (labelIdx.has(i)) {
       axis.append(svg('text', { x: pad.l + slot * i + slot / 2, y: H - 12, 'text-anchor': 'middle' }, shortDate(d.date)));
     }
   });

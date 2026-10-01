@@ -140,7 +140,7 @@ export async function renderKanban(main, { query, navigate }) {
       colEls.set(col.code, section);
       board.append(section);
     }
-    cancelNote.replaceChildren(h('a', { href: `#/issues/list?status=CANCEL` }, 'Cancel된 Issue는 목록에서 조회 →'), res.total > 500 ? ` · 표시 한도 500건 (전체 ${res.total}건) — 필터를 좁혀주세요.` : '');
+    cancelNote.replaceChildren(h('a', { href: `#/issues/list?status=CANCEL` }, '취소된 Issue는 목록에서 조회 →'), res.total > 500 ? ` · 표시 한도 500건 (전체 ${res.total}건) — 필터를 좁혀주세요.` : '');
   }
 
   async function claim(it) {

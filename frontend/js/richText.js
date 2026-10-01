@@ -74,6 +74,24 @@ export function renderIssueBodyText(raw, tag = 'div', cls = 'body') {
   return renderRichText(toDisplayHtml(raw), tag, cls);
 }
 
+/** richText(HTML)를 "다음 작업" 안내문처럼 텍스트만 필요한 자리에 쓸 짧은 평문으로 변환한다(태그 제거, 이미지는 장수로 요약). */
+export function richTextToPlainText(raw) {
+  const html = toDisplayHtml(raw);
+  return html
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/?(b|strong)>/gi, '')
+    .replace(/(?:<img\b[^>]*>)+/gi, (run) => {
+      const count = (run.match(/<img\b[^>]*>/gi) || []).length;
+      return count > 1 ? `[이미지 ${count}장]` : '[이미지]';
+    })
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
 let pendingSeq = 0;
 
 /** 서버가 허용하는 이미지 확장자와 MIME의 매핑. 클립보드 File의 실제 타입에 맞는 확장자를 붙여야

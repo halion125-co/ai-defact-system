@@ -143,7 +143,7 @@ export const EVENT_LABEL = {
   RESOLVED: '조치 완료',
   DEPLOYED: '배포 완료',
   REOPENED: '재조치 요청 (Re-open)',
-  CANCELLED: 'Cancel',
+  CANCELLED: '취소',
   CLOSED: 'Close',
   ADMIN_STATUS_OVERRIDE: '관리자 상태 강제 변경',
   ATTACHMENT_ADDED: '첨부 추가',

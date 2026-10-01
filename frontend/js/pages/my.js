@@ -9,7 +9,7 @@ import { createRichTextEditor } from '../richText.js';
 
 const TABS = [
   { key: 'reported', label: '내가 등록', desc: '내가 Reporter인 Issue', empty: '등록한 Issue가 없습니다.' },
-  { key: 'assigned', label: '내가 조치', desc: '내가 조치자인 진행 중 Issue (Closed/Cancel 제외)', empty: '현재 조치할 Issue가 없습니다.', emptyDesc: '새 Issue가 배정되면 이곳에서 확인할 수 있습니다.' },
+  { key: 'assigned', label: '내가 조치', desc: '내가 조치자인 진행 중 Issue (완료/취소 제외)', empty: '현재 조치할 Issue가 없습니다.', emptyDesc: '새 Issue가 배정되면 이곳에서 확인할 수 있습니다.' },
   { key: 'waiting', label: '확인대기', desc: '내가 등록했고 조치가 완료되어 재검증이 필요한 Issue', empty: '재검증을 기다리는 Issue가 없습니다.' },
 ];
 
@@ -78,6 +78,8 @@ function doResolve(it, reload) {
 }
 /** doResolve와 동일한 패턴: 사유/코멘트 1개(리치텍스트, 이미지 붙여넣기 가능)로 구성된 액션 모달. */
 function openRichReasonModal(it, reload, { title, description, fieldLabel, placeholder, required, submitLabel, submitVariant, successMsg, action, extraPayload }) {
+  // 제출 버튼 라벨이 "취소"와 같으면 모달 닫기 버튼과 동일한 단어가 되어 혼동되므로 "닫기"로 바꾼다.
+  const cancelLabel = submitLabel && submitLabel.startsWith('취소') ? '닫기' : '취소';
   const pendingImages = new Map();
   const richField = createRichTextEditor({ placeholder, onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }) });
   const errBox = h('div', { class: 'form-error hidden' });
@@ -124,7 +126,7 @@ function openRichReasonModal(it, reload, { title, description, fieldLabel, place
       }
     }
   };
-  openModal({ title, wide: true, body, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
+  openModal({ title, wide: true, body, actions: [{ label: cancelLabel, variant: 'btn-secondary', onClick: (close) => close() }, { label: submitLabel, variant: submitVariant, onClick: submit }] });
 }
 function doCloseVerified(it, reload) {
   openRichReasonModal(it, reload, {
