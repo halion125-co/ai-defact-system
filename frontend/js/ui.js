@@ -316,7 +316,6 @@ export function formModal({ title, description, fields = [], submitLabel = 'ì €ì
   const form = h('form', { class: 'modal-form', novalidate: true });
   if (description) form.append(h('p', { class: 'desc' }, description));
   form.append(errBox);
-  if (extra) form.append(extra);
   const fieldEls = {};
   for (const f of fields) {
     let input;
@@ -342,6 +341,7 @@ export function formModal({ title, description, fields = [], submitLabel = 'ì €ì
     fieldEls[f.name] = wrap;
     form.append(wrap);
   }
+  if (extra) form.append(extra);
   const showFieldError = (name, msg) => {
     const w = fieldEls[name];
     if (!w) return false;

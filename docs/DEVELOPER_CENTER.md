@@ -453,11 +453,12 @@ Windows에서는 `start.bat`, Linux에서는 `./start.sh`를 사용할 수 있�
   "logDir": "./logs",
   "sessionTtlHours": 12,
   "timezone": "Asia/Seoul",
-  "bootstrapAdminEmployeeIds": ["admin"]
+  "bootstrapAdminEmployeeIds": ["admin"],
+  "adminPasswordHash": ""
 }
 ```
 
-관리자(admin) 계정 비밀번호는 설정 파일이 아니라 서버 코드(`UserService.js`의 `ADMIN_PASSWORD_SHA256`)에 SHA-256 해시로 고정되어 있습니다. 사번 `admin`으로 `#/admin-login`에 로그인할 때만 사용되며, 다른 사번을 Quality Admin으로 만드는 것은 [설정 > 사용자] 화면의 권한 부여로 처리합니다.
+관리자(admin) 계정 비밀번호는 코드나 설정 파일에 평문으로 두지 않습니다. `npm run hash-admin-password -- "비밀번호"`로 scrypt 해시를 생성해 `DMS_ADMIN_PASSWORD_HASH` 환경변수(또는 위 `adminPasswordHash`)로 주입합니다. 해시가 설정되지 않은 배포는 `#/admin-login` 자체가 거부됩니다(fail-closed). 사번 `admin`으로 로그인할 때만 사용되며, 다른 사번을 Quality Admin으로 만드는 것은 [설정 > 사용자] 화면의 권한 부여로 처리합니다.
 
 ### 최초 확인
 

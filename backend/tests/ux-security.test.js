@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { makeContainer, DEFECT_BODY, startServer, client, promoteToAdmin } = require('./helpers');
+const { hashPassword } = require('../app/utils/password');
 
 async function setup() {
   const c = makeContainer();
@@ -297,10 +298,13 @@ test('일반 로그인(/api/session/start)으로는 bootstrap 사번이라도 Qu
   assert.equal(started.body.user.isQualityAdmin, false, '일반 로그인 경로는 더 이상 자동 승격하지 않는다');
 });
 
-const FIXED_ADMIN_PASSWORD = 'fltmzmvnawlfxla';
+// 테스트 전용 더미 비밀번호(운영 admin 계정과 무관). SEC-001: 평문은 테스트에서 hashPassword()로 즉시 해시화해서만
+// 컨테이너에 주입하고, 서버는 해시만 비교한다(코드에 고정 평문/고정 해시를 두지 않는다).
+const TEST_ADMIN_PASSWORD = 'test-only-dummy-pw';
+const TEST_ADMIN_PASSWORD_HASH = hashPassword(TEST_ADMIN_PASSWORD);
 
-test('관리자 전용 로그인(/api/session/admin-start): 사번 admin + 고정 비밀번호로만 Quality Admin 승격/세션 발급, 실패 시 잠금', async (t) => {
-  const c = makeContainer();
+test('관리자 전용 로그인(/api/session/admin-start): 사번 admin + 설정된 비밀번호 해시로만 Quality Admin 승격/세션 발급, 실패 시 잠금', async (t) => {
+  const c = makeContainer({ adminPasswordHash: TEST_ADMIN_PASSWORD_HASH });
   const srv = await startServer(c);
   t.after(() => srv.close());
   const cli = client(srv.base);
@@ -315,30 +319,39 @@ test('관리자 전용 로그인(/api/session/admin-start): 사번 admin + 고�
   assert.equal(c.repos.userRepo.findByEmployeeId('admin'), null);
 
   // 올바른 비밀번호 → 신규 계정이 Quality Admin으로 생성되고 세션도 발급됨
-  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: FIXED_ADMIN_PASSWORD });
+  r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: TEST_ADMIN_PASSWORD });
   assert.equal(r.status, 200);
   assert.equal(r.body.user.isQualityAdmin, true);
   const cur = await cli.get('/api/session/current');
   assert.equal(cur.body.user.userId, r.body.user.userId);
 
   // 반복 실패 시 일시 잠금(무차별 대입 방지)
-  const c2 = makeContainer();
+  const c2 = makeContainer({ adminPasswordHash: TEST_ADMIN_PASSWORD_HASH });
   const srv2 = await startServer(c2);
   t.after(() => srv2.close());
   const cli2 = client(srv2.base);
   for (let i = 0; i < 5; i += 1) {
     await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: 'wrong' });
   }
-  const blocked = await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: FIXED_ADMIN_PASSWORD });
+  const blocked = await cli2.post('/api/session/admin-start', { employeeId: 'admin', password: TEST_ADMIN_PASSWORD });
   assert.equal(blocked.status, 403, '연속 실패 이후에는 올바른 비밀번호도 잠시 차단된다');
 });
 
-test('관리자 전용 로그인은 사번 admin에만 허용되고, 다른 사번은 비밀번호가 맞아도 거부된다', async (t) => {
-  const c = makeContainer();
+test('관리자 비밀번호 해시가 설정되지 않은 배포는 admin-start 자체가 거부된다(fail-closed)', async (t) => {
+  const c = makeContainer({ adminPasswordHash: '' });
   const srv = await startServer(c);
   t.after(() => srv.close());
   const cli = client(srv.base);
-  const r = await cli.post('/api/session/admin-start', { employeeId: '10001', password: FIXED_ADMIN_PASSWORD });
+  const r = await cli.post('/api/session/admin-start', { employeeId: 'admin', password: TEST_ADMIN_PASSWORD });
+  assert.equal(r.status, 403);
+});
+
+test('관리자 전용 로그인은 사번 admin에만 허용되고, 다른 사번은 비밀번호가 맞아도 거부된다', async (t) => {
+  const c = makeContainer({ adminPasswordHash: TEST_ADMIN_PASSWORD_HASH });
+  const srv = await startServer(c);
+  t.after(() => srv.close());
+  const cli = client(srv.base);
+  const r = await cli.post('/api/session/admin-start', { employeeId: '10001', password: TEST_ADMIN_PASSWORD });
   assert.equal(r.status, 403);
   assert.equal(c.repos.userRepo.findByEmployeeId('10001'), null, '거부된 시도로 계정이 생성되지 않는다');
 });

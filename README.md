@@ -24,7 +24,7 @@ node backend/server.js
 브라우저에서 `http://localhost:8080/` 접속 → **신규 사용자 등록** 또는 사번 입력으로 시작.
 
 - 일반 사용자는 비밀번호 없이 사번만으로 로그인/등록한다.
-- 사번 `admin`은 **별도 로그인 경로**(`#/admin-login`, 화면 하단의 작은 "· Admin" 링크)에서 **고정 비밀번호**를 입력해야 로그인된다(비밀번호는 서버 코드에 해시로 고정되어 있어 별도 설정이 필요 없다). 연속 5회 실패 시 5분간 잠긴다.
+- 사번 `admin`은 **별도 로그인 경로**(`#/admin-login`, 화면 하단의 작은 "· Admin" 링크)에서 **운영자가 설정한 비밀번호**를 입력해야 로그인된다. 비밀번호는 코드가 아니라 환경변수 `DMS_ADMIN_PASSWORD_HASH`(scrypt 해시)로 주입하며, 설정되지 않은 배포는 관리자 로그인 자체가 거부된다(fail-closed). 해시 생성: `npm run hash-admin-password -- "비밀번호"`. 연속 5회 실패 시 5분간 잠긴다.
 - 다른 사번을 Quality Admin으로 만들려면, 그 사람이 사번으로 일반 가입한 뒤 기존 Admin이 [설정 > 사용자]에서 "Admin 지정"으로 권한을 부여한다. 이렇게 승격된 Admin도 비밀번호 없이 사번만으로 일반 로그인한다.
 - 데모 seed 사용자: `admin`(김성훈, Quality Admin), `10001`(이영희), `10002`(박민수), `20001`(홍길동), `20002`(최지우)
 - 데모 seed 데이터: 결함 12건(Open/조치중/Done/배포/Closed/Re-open/Cancel), 개선요청 3건(조치 2·Closed 1), 문의 2건(Closed 1)
@@ -46,7 +46,7 @@ Docker: `docker compose up -d --build` (또는 구버전 CLI는 `docker-compose 
 
 ## 설정
 
-`config/server.config.json` (환경변수 `DMS_PORT`, `DMS_HOST`, `DMS_DATA_DIR`, `DMS_UPLOAD_DIR`, `DMS_BACKUP_DIR`, `DMS_LOG_DIR`, `DMS_BOOTSTRAP_ADMIN`, `DMS_CONFIG`가 우선)
+`config/server.config.json` (환경변수 `DMS_PORT`, `DMS_HOST`, `DMS_DATA_DIR`, `DMS_UPLOAD_DIR`, `DMS_BACKUP_DIR`, `DMS_LOG_DIR`, `DMS_BOOTSTRAP_ADMIN`, `DMS_ADMIN_PASSWORD_HASH`, `DMS_CONFIG`가 우선)
 
 ```json
 {
@@ -59,11 +59,12 @@ Docker: `docker compose up -d --build` (또는 구버전 CLI는 `docker-compose 
   "sessionTtlHours": 12,
   "timezone": "Asia/Seoul",
   "bootstrapAdminEmployeeIds": ["admin"],
+  "adminPasswordHash": "",
   "backupSchedule": { "enabled": true, "hour": 2, "minute": 0 }
 }
 ```
 
-관리자(admin) 계정 비밀번호는 설정 파일/환경변수가 아니라 `backend/app/services/UserService.js`의 `ADMIN_PASSWORD_SHA256` 상수(SHA-256 해시)로 고정되어 있다. 비밀번호를 바꾸려면 새 비밀번호의 해시를 계산해 이 상수를 교체한다.
+관리자(admin) 계정 비밀번호는 코드나 설정 파일에 평문/고정값으로 두지 않는다. `npm run hash-admin-password -- "비밀번호"`로 scrypt 해시를 생성한 뒤, 그 출력값을 `DMS_ADMIN_PASSWORD_HASH` 환경변수(또는 `config/server.config.json`의 `adminPasswordHash`)로 설정한다. 설정하지 않으면 관리자 로그인 자체가 거부된다(fail-closed).
 
 운영 설정(장기 미조치 기준일, 첨부 크기/확장자, Change Reference/Deployment 사용 여부, 백업 보관일)은 UI **설정 > 운영설정**에서 Quality Admin이 변경한다.
 

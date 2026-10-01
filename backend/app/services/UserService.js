@@ -1,35 +1,23 @@
 'use strict';
 
-const crypto = require('crypto');
 const { errors } = require('../utils/errors');
 const V = require('../validators/validators');
 const P = require('../permissions/permissions');
 const { padNumber } = require('../utils/id');
 const { nowIso } = require('../utils/time');
 const { EVENT } = require('../models/constants');
-
-/**
- * 관리자 계정(사번 'admin') 전용 고정 비밀번호의 SHA-256 해시.
- * 평문은 코드 어디에도 남기지 않는다. 값을 바꾸려면 새 비밀번호로 해시를 다시 계산해 교체한다:
- *   node -e "console.log(require('crypto').createHash('sha256').update('새비밀번호','utf8').digest('hex'))"
- */
-const ADMIN_PASSWORD_SHA256 = '6950891c759e711d53f779aeea2756c2febb4ecfbc8adc158aa093e1ee5684eb';
-
-function sha256(s) {
-  return crypto.createHash('sha256').update(String(s), 'utf8').digest('hex');
-}
-
-function safeEqual(a, b) {
-  const bufA = Buffer.from(String(a));
-  const bufB = Buffer.from(String(b));
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
+const { verifyPassword } = require('../utils/password');
 
 class UserService {
-  constructor({ userRepo, bootstrapAdminEmployeeIds = [], auditRepo, sequenceRepo, logger }) {
+  /**
+   * adminPasswordHash: scrypt 해시 문자열("scrypt$salt$hash"). 환경변수 DMS_ADMIN_PASSWORD_HASH로
+   * 운영자가 직접 주입한다. 평문 비밀번호나 고정 해시를 코드에 두지 않는다(SEC-001).
+   * 생성 방법: node scripts/hash-admin-password.js "원하는 비밀번호"
+   */
+  constructor({ userRepo, bootstrapAdminEmployeeIds = [], adminPasswordHash = '', auditRepo, sequenceRepo, logger }) {
     this.userRepo = userRepo;
     this.bootstrapAdmins = new Set(bootstrapAdminEmployeeIds.map((s) => String(s).toLowerCase()));
+    this.adminPasswordHash = adminPasswordHash || '';
     this.auditRepo = auditRepo;
     this.sequenceRepo = sequenceRepo;
     this.logger = logger;
@@ -80,20 +68,22 @@ class UserService {
   }
 
   /**
-   * 관리자 전용 로그인: 사번 'admin' + 고정 비밀번호로만 진입 가능(부트스트랩 전용 경로).
+   * 관리자 전용 로그인: 사번 'admin' + 운영자가 주입한 비밀번호로만 진입 가능(부트스트랩 전용 경로).
    * 다른 사번은 이 경로로 Admin이 될 수 없다 — 일반 사용자를 Admin으로 승격하는 것은
    * 이미 Admin인 사람이 [설정 > 사용자]에서 지정해야 한다(UserService.update의 isQualityAdmin).
+   * 비밀번호 해시가 설정되지 않은 배포는 관리자 로그인 자체를 막는다(fail-closed, SEC-001).
    * 성공 시 사번이 없으면 새로 만들고, 있으면 Quality Admin 상태를 보정한다.
    */
   async adminLogin({ employeeId, password }) {
     const id = String(employeeId || '').trim();
     if (!id) throw errors.validation('사번을 입력해주세요.', { field: 'employeeId' });
     if (!this.isBootstrapAdmin(id)) throw errors.forbidden('관리자 전용 로그인은 관리자 계정에서만 사용할 수 있습니다.');
+    if (!this.adminPasswordHash) throw errors.forbidden('관리자 로그인이 설정되지 않았습니다. 서버 관리자에게 문의하세요.');
     const now = Date.now();
     if (now < this.adminLoginFailures.blockedUntil) {
       throw errors.forbidden('로그인 시도가 많아 잠시 후 다시 시도해주세요.');
     }
-    if (!password || !safeEqual(sha256(password), ADMIN_PASSWORD_SHA256)) {
+    if (!verifyPassword(password, this.adminPasswordHash)) {
       this.adminLoginFailures.count += 1;
       if (this.adminLoginFailures.count >= 5) {
         this.adminLoginFailures.blockedUntil = now + 5 * 60 * 1000;

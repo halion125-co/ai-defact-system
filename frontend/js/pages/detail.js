@@ -421,10 +421,14 @@ export async function renderDetail(main, { params, navigate }) {
             { name: 'target', label: '문의 대상', required: true, value: issue.target },
             { name: 'question', label: '문의 내용', type: 'textarea', required: true, value: issue.question, rows: 4 },
           ];
+      const attachmentsBlock = p.canAttach
+        ? h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), attachmentEditor(issue, () => load({ silent: true })))
+        : null;
       formModal({
         title: '등록내용 수정',
         description: '변경 전/후 내용은 활동 이력에 기록됩니다.',
         wide: true,
+        extra: attachmentsBlock,
         fields,
         submitLabel: '저장',
         onSubmit: (v) => {
@@ -434,7 +438,8 @@ export async function renderDetail(main, { params, navigate }) {
             const ov = issue[f.name] || '';
             if (nv !== ov) changes[f.name] = nv;
           }
-          if (!Object.keys(changes).length) throw new Error('변경된 내용이 없습니다.');
+          if (!Object.keys(changes).length && !attachmentsBlock) throw new Error('변경된 내용이 없습니다.');
+          if (!Object.keys(changes).length) return load({ silent: true });
           return run((rev) => api.issues.update(issue.id, rev, changes), '등록내용이 수정되었습니다.');
         },
       });
@@ -492,7 +497,8 @@ export async function renderDetail(main, { params, navigate }) {
         field('발생 위치', location, '화면/메뉴/기능 위치'),
         field('발생 환경', env),
         h('div', { class: 'field' }, h('label', {}, '재현 절차', h('span', { class: 'req' }, '*')), stepsEl, h('div', {}, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onClick: () => addStep().focus() }, '+ 단계 추가')), h('div', { class: 'help' }, '순서대로 한 줄씩 입력. 1단계 이상 필수')),
-        field('기대 결과', expected, '정상이라면 어떻게 동작해야 하는지 적어주세요.')
+        field('기대 결과', expected, '정상이라면 어떻게 동작해야 하는지 적어주세요.'),
+        p.canAttach ? h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), attachmentEditor(issue, () => load({ silent: true }))) : null
       );
 
       const submit = async (close) => {
@@ -507,8 +513,9 @@ export async function renderDetail(main, { params, navigate }) {
         const nvSteps = steps.map((s) => s.value.trim()).filter(Boolean);
         if (JSON.stringify(nvSteps) !== JSON.stringify(existingSteps)) changes.reproductionSteps = nvSteps;
         if (!Object.keys(changes).length) {
-          errBox.textContent = '변경된 내용이 없습니다.';
-          errBox.classList.remove('hidden');
+          // 첨부파일은 attachmentEditor에서 이미 즉시 반영되었으므로, 텍스트 변경이 없으면 그대로 닫는다.
+          await load({ silent: true });
+          close();
           return;
         }
         try {
@@ -559,85 +566,130 @@ export async function renderDetail(main, { params, navigate }) {
   }
 
   /* ================= Sub-builders ================= */
+  /** 상세 화면은 조회 전용이다. 첨부파일 추가/삭제는 "등록내용 수정"에서만 한다(openEditDefect/openEdit의 attachmentEditor). */
   function attachmentZone(issue, p) {
     const atts = (issue.attachments || []).filter((a) => !a.deleted);
+    const wrap = h('div', {});
+    if (!atts.length) {
+      wrap.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
+      return wrap;
+    }
+    const list = h('div', { class: 'att-table' });
+    for (const a of atts) {
+      const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
+      const isImg = /^image\//.test(a.mimeType);
+      const row = h(
+        'div',
+        { class: 'att-row' },
+        h('a', { class: 'att-name', href: url, title: a.originalName }, icon('paperclip', { size: 13 }), a.originalName),
+        h('span', { class: 'att-meta' }, fmtBytes(a.size)),
+        h('span', { class: 'att-meta' }, a.uploadedByName || '-'),
+        h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
+        h(
+          'span',
+          { class: 'att-actions' },
+          isImg ? h('button', { class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
+          h('a', { class: 'btn btn-ghost btn-xs', href: url, target: '_blank', rel: 'noopener' }, '다운로드')
+        )
+      );
+      list.append(row);
+    }
+    wrap.append(list);
+    if (p.canAttach) wrap.append(h('div', { class: 'small muted mt-8' }, '파일 추가/삭제는 "등록내용 수정"에서 할 수 있습니다.'));
+    return wrap;
+  }
+
+  /**
+   * "등록내용 수정" 모달에 들어가는 첨부파일 추가/삭제 UI(결함/개선/문의 공용).
+   * 업로드는 issueId가 이미 있으므로 즉시 반영되고(모달이 열려있는 동안에도), 삭제도 즉시 반영된다.
+   * onChange는 매 변경 후 상세 화면(run)과 모달 리스트를 함께 새로고침하기 위한 콜백이다.
+   */
+  function attachmentEditor(issue, onChange) {
     const wrap = h('div', { class: 'dropzone' });
     const input = h('input', { type: 'file', multiple: true, class: 'hidden' });
     const op = store.operation || {};
     const dzErr = h('div', { class: 'dz-error hidden' });
+    const listEl = h('div', { class: 'att-table' });
+
+    function renderList() {
+      clear(listEl);
+      const atts = (issue.attachments || []).filter((a) => !a.deleted);
+      for (const a of atts) {
+        const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
+        const isImg = /^image\//.test(a.mimeType);
+        listEl.append(
+          h(
+            'div',
+            { class: 'att-row' },
+            h('a', { class: 'att-name', href: url, title: a.originalName, target: '_blank', rel: 'noopener' }, icon('paperclip', { size: 13 }), a.originalName),
+            h('span', { class: 'att-meta' }, fmtBytes(a.size)),
+            h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
+            h(
+              'span',
+              { class: 'att-actions' },
+              isImg ? h('button', { type: 'button', class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
+              h('button', {
+                type: 'button',
+                class: 'btn btn-ghost btn-xs',
+                onClick: async () => {
+                  if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
+                  try {
+                    const res = await api.issues.deleteAttachment(issue.id, a.attachmentId, issue.revision);
+                    issue.revision = res.revision;
+                    // deleteAttachment 응답에는 attachments 전체 목록이 없으므로 재조회해서 동기화한다.
+                    const fresh = await api.issues.get(issue.id);
+                    issue.attachments = fresh.issue.attachments;
+                    renderList();
+                    if (onChange) onChange();
+                  } catch (err) {
+                    toast(errorMessage(err), 'error');
+                  }
+                },
+              }, '삭제')
+            )
+          )
+        );
+      }
+      if (!atts.length) listEl.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
+    }
+    renderList();
 
     async function doUpload(files) {
       if (!files.length) return;
       dzErr.classList.add('hidden');
       const fd = new FormData();
       for (const f of files) fd.append('file', f, f.name);
-      fd.append('expectedRevision', String(data.issue.revision));
+      fd.append('expectedRevision', String(issue.revision));
       try {
-        await run(async () => {
-          const res = await api.issues.upload(issue.id, fd);
-          if (res.rejected && res.rejected.length) {
-            const msg = `업로드 실패: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`;
-            dzErr.textContent = msg;
-            dzErr.classList.remove('hidden');
-            toast(msg, 'error', { timeout: 8000 });
-          }
-        }, '첨부가 추가되었습니다.');
-      } catch (err) {
-        if (!err.isConflict) {
-          dzErr.textContent = errorMessage(err);
+        const res = await api.issues.upload(issue.id, fd);
+        issue.revision = res.revision;
+        // upload 응답의 attachments는 "이번에 추가된" 항목만이라 전체 목록이 아니다. 재조회해서 동기화한다.
+        const fresh = await api.issues.get(issue.id);
+        issue.attachments = fresh.issue.attachments;
+        if (res.rejected && res.rejected.length) {
+          const msg = `업로드 실패: ${res.rejected.map((r) => `${r.name} (${r.message})`).join(', ')}`;
+          dzErr.textContent = msg;
           dzErr.classList.remove('hidden');
-          toast(errorMessage(err), 'error');
+          toast(msg, 'error', { timeout: 8000 });
         }
+        renderList();
+        if (onChange) onChange();
+      } catch (err) {
+        dzErr.textContent = errorMessage(err);
+        dzErr.classList.remove('hidden');
+        toast(errorMessage(err), 'error');
       }
     }
     input.addEventListener('change', () => doUpload([...input.files]));
 
-    if (p.canAttach) {
-      const drop = h(
-        'div',
-        { class: 'dropzone-area', onClick: () => input.click(), onDragover: (e) => { e.preventDefault(); drop.classList.add('drag'); }, onDragleave: () => drop.classList.remove('drag'), onDrop: (e) => { e.preventDefault(); drop.classList.remove('drag'); doUpload([...e.dataTransfer.files]); } },
-        icon('paperclip', { size: 18, cls: 'dz-ico' }),
-        h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
-        h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
-      );
-      wrap.append(drop, input, dzErr);
-    }
-
-    if (atts.length) {
-      const list = h('div', { class: 'att-table' });
-      for (const a of atts) {
-        const url = `/api/issues/${issue.id}/attachments/${a.attachmentId}`;
-        const isImg = /^image\//.test(a.mimeType);
-        const row = h(
-          'div',
-          { class: 'att-row' },
-          h('a', { class: 'att-name', href: url, title: a.originalName }, icon('paperclip', { size: 13 }), a.originalName),
-          h('span', { class: 'att-meta' }, fmtBytes(a.size)),
-          h('span', { class: 'att-meta' }, a.uploadedByName || '-'),
-          h('span', { class: 'att-meta nowrap' }, a.uploadedAt ? fmtDateTime(a.uploadedAt) : '-'),
-          h(
-            'span',
-            { class: 'att-actions' },
-            isImg ? h('button', { class: 'btn btn-ghost btn-xs', onClick: () => previewImage(url, a.originalName) }, '미리보기') : null,
-            h('a', { class: 'btn btn-ghost btn-xs', href: url, target: '_blank', rel: 'noopener' }, '다운로드'),
-            p.isAdmin || a.uploadedBy === store.user.userId
-              ? h('button', { class: 'btn btn-ghost btn-xs', onClick: async () => {
-                  if (!(await confirmModal({ title: '첨부 삭제', message: `${josa(a.originalName, '을/를')} 삭제합니다. (논리 삭제, 이력 보존)`, confirmLabel: '삭제', variant: 'btn-danger' }))) return;
-                  try {
-                    await run((rev) => api.issues.deleteAttachment(issue.id, a.attachmentId, rev), '첨부가 삭제되었습니다.');
-                  } catch (err) {
-                    if (!err.isConflict) toast(errorMessage(err), 'error');
-                  }
-                } }, '삭제')
-              : null
-          )
-        );
-        list.append(row);
-      }
-      wrap.append(list);
-    } else if (!p.canAttach) {
-      wrap.append(h('div', { class: 'muted small' }, '첨부된 파일 없음'));
-    }
+    const drop = h(
+      'div',
+      { class: 'dropzone-area', onClick: () => input.click(), onDragover: (e) => { e.preventDefault(); drop.classList.add('drag'); }, onDragleave: () => drop.classList.remove('drag'), onDrop: (e) => { e.preventDefault(); drop.classList.remove('drag'); doUpload([...e.dataTransfer.files]); } },
+      icon('paperclip', { size: 18, cls: 'dz-ico' }),
+      h('div', { class: 'dz-text' }, '파일을 끌어오거나 선택하세요'),
+      h('div', { class: 'dz-help' }, `최대 ${op.maxAttachmentMb || 20}MB`, h('button', { type: 'button', class: 'dz-ext-toggle', onClick: (e) => { e.stopPropagation(); e.currentTarget.nextElementSibling.classList.toggle('hidden'); } }, '허용 형식 보기'), h('span', { class: 'dz-ext hidden' }, (op.allowedExtensions || []).join(', ')))
+    );
+    wrap.append(drop, input, dzErr, listEl);
     return wrap;
   }
 

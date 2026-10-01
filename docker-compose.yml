@@ -13,6 +13,9 @@ services:
       - DMS_HOST=0.0.0.0
       - DMS_PORT=8080
       - DMS_BOOTSTRAP_ADMIN=admin
+      # Quality Admin 로그인(#/admin-login)에 필요한 비밀번호 해시. 비워두면 관리자 로그인 자체가 거부된다.
+      # 해시 생성: npm run hash-admin-password -- "원하는 비밀번호" (호스트에서 실행 후 출력값을 아래에 붙여넣는다)
+      - DMS_ADMIN_PASSWORD_HASH=
       - TZ=Asia/Seoul
     volumes:
       # NAS 재부팅/컨테이너 재생성 후에도 데이터가 유지되도록 호스트 경로에 영구 저장한다.
