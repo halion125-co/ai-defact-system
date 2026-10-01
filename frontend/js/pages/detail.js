@@ -464,41 +464,77 @@ export async function renderDetail(main, { params, navigate }) {
         onSubmit: (v) => run((rev) => api.issues.action(issue.id, 'priority', { expectedRevision: rev, priority: v.priority, reason: v.reason }), 'Priority가 변경되었습니다.'),
       });
     }
+    /** 개선/문의 수정: 등록 화면과 동일하게 본문(request/question)은 리치텍스트 에디터로 이미지 붙여넣기를 지원한다. */
     function openEdit() {
       if (issue.type === 'DEFECT') return openEditDefect();
       const isImp = issue.type === 'IMPROVEMENT';
-      const fields = isImp
-        ? [
-            { name: 'target', label: '개선 대상', required: true, value: issue.target },
-            { name: 'request', label: '개선 내용', type: 'textarea', required: true, value: issue.request, rows: 4 },
-            { name: 'reason', label: '개선 필요 사유', type: 'textarea', value: issue.reason || '', rows: 3 },
-          ]
-        : [
-            { name: 'target', label: '문의 대상', required: true, value: issue.target },
-            { name: 'question', label: '문의 내용', type: 'textarea', required: true, value: issue.question, rows: 4 },
-          ];
-      const attachmentsBlock = p.canAttach
-        ? h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), attachmentEditor(issue, () => load({ silent: true })))
-        : null;
-      formModal({
-        title: '등록내용 수정',
-        description: '변경 전/후 내용은 활동 이력에 기록됩니다.',
-        wide: true,
-        extra: attachmentsBlock,
-        fields,
-        submitLabel: '저장',
-        onSubmit: (v) => {
-          const changes = {};
-          for (const f of fields) {
-            const nv = v[f.name];
-            const ov = issue[f.name] || '';
-            if (nv !== ov) changes[f.name] = nv;
-          }
-          if (!Object.keys(changes).length && !attachmentsBlock) throw new Error('변경된 내용이 없습니다.');
-          if (!Object.keys(changes).length) return load({ silent: true });
-          return run((rev) => api.issues.update(issue.id, rev, changes), '등록내용이 수정되었습니다.');
-        },
+      const pendingImages = new Map(); // pendingId -> { file }. 이 화면은 issue가 이미 있으므로 저장 시 바로 업로드 가능.
+      const bodyField = isImp ? 'request' : 'question';
+      const target = h('input', { class: 'input', value: issue.target, maxlength: 200 });
+      const body = createRichTextEditor({
+        initialHtml: toDisplayHtml(issue[bodyField]),
+        onImagePending: ({ pendingId, file }) => pendingImages.set(pendingId, { file }),
       });
+      const reason = isImp ? h('textarea', { class: 'input', rows: 3 }) : null;
+      if (reason) reason.value = issue.reason || '';
+
+      const field = (label, input, required, help) => h('div', { class: 'field' }, h('label', {}, label, required ? h('span', { class: 'req' }, '*') : null), input, help ? h('div', { class: 'help' }, help) : null);
+      const errBox = h('div', { class: 'form-error hidden' });
+      const body_ = h(
+        'div',
+        {},
+        errBox,
+        field(isImp ? '개선 대상' : '문의 대상', target, true),
+        field(isImp ? '개선 내용' : '문의 내용', body, true, '화면 캡처를 복사한 뒤 Ctrl+V로 바로 붙여넣을 수 있습니다.'),
+        reason ? field('개선 필요 사유', reason, false) : null,
+        p.canAttach ? h('div', { class: 'field' }, h('label', {}, '첨부파일 / 증적'), attachmentEditor(issue, () => load({ silent: true }))) : null
+      );
+
+      const submit = async (close) => {
+        errBox.classList.add('hidden');
+        if (body.rte.isEmpty()) {
+          errBox.textContent = `${isImp ? '개선 내용' : '문의 내용'}을 입력해주세요.`;
+          errBox.classList.remove('hidden');
+          return;
+        }
+        const changes = {};
+        if (target.value.trim() !== (issue.target || '')) changes.target = target.value.trim();
+        const bodyHtml = body.rte.getValue();
+        if (bodyHtml !== toDisplayHtml(issue[bodyField])) changes[bodyField] = bodyHtml;
+        if (reason && reason.value.trim() !== (issue.reason || '')) changes.reason = reason.value.trim();
+        if (!Object.keys(changes).length) {
+          // 첨부파일은 attachmentEditor에서 이미 즉시 반영되었으므로, 텍스트 변경이 없으면 그대로 닫는다.
+          await load({ silent: true });
+          close();
+          return;
+        }
+        try {
+          await run(async (rev) => {
+            let curRev = rev;
+            if (pendingImages.size) {
+              const idToUrl = new Map();
+              for (const [pendingId, { file }] of pendingImages) {
+                const fd = new FormData();
+                fd.append('file', file, file.name || `pasted-${pendingId}.png`);
+                const up = await api.issues.upload(issue.id, fd);
+                curRev = up.revision;
+                const att = up.attachments && up.attachments[0];
+                if (att) idToUrl.set(pendingId, `/api/issues/${issue.id}/attachments/${att.attachmentId}?inline=1`);
+              }
+              body.rte.resolvePendingImages(idToUrl);
+              changes[bodyField] = body.rte.getValue();
+            }
+            return api.issues.update(issue.id, curRev, changes);
+          }, '등록내용이 수정되었습니다.');
+          close();
+        } catch (err) {
+          if (!err.isConflict) {
+            errBox.textContent = errorMessage(err);
+            errBox.classList.remove('hidden');
+          }
+        }
+      };
+      openModal({ title: '등록내용 수정', wide: true, body: body_, actions: [{ label: '취소', variant: 'btn-secondary', onClick: (close) => close() }, { label: '저장', variant: 'btn-primary', onClick: submit }] });
     }
 
     /** 결함 수정: 등록 화면과 동일한 라벨/순서, 재현 절차도 등록 화면과 같은 step-input 방식을 재사용한다. */
